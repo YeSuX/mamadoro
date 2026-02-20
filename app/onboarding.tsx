@@ -18,6 +18,7 @@ import {
 import { StepComplete } from "@/components/onboarding/step-complete";
 import { StepDuration } from "@/components/onboarding/step-duration";
 import { StepMomMode } from "@/components/onboarding/step-mom-mode";
+import { TypewriterText } from "@/components/onboarding/typewriter-text";
 import { StepWelcome } from "@/components/onboarding/step-welcome";
 import { createDefaultSettings } from "@/services/settings";
 
@@ -106,7 +107,7 @@ export default function OnboardingScreen() {
       <View style={styles.mamaZone}>
         <View style={styles.mamaRow}>
           <Animated.View style={[styles.speechBubble, bubbleAnimStyle]}>
-            <Text style={styles.bubbleText}>{bubbleText}</Text>
+            <TypewriterText text={bubbleText} style={styles.bubbleText} />
             <View style={styles.bubbleTail} />
           </Animated.View>
           <View style={styles.mamaAvatarWrap}>
