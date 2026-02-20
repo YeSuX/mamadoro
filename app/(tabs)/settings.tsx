@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -22,7 +22,13 @@ import {
   Volume2,
   Minus,
   Plus,
+  Play,
+  Check,
+  Music,
 } from "lucide-react-native";
+import * as Haptics from "expo-haptics";
+import { Audio } from "expo-av";
+import { SOUND_ASSETS } from "@/assets/sounds";
 import { PALETTE, MOM_MODES } from "@/components/onboarding/constants";
 import { useSettings, type AppSettings } from "@/hooks/use-settings";
 
@@ -35,18 +41,12 @@ const FOCUS_PRESETS = [
 ];
 
 const ALARM_SOUNDS = [
-  { value: "default", label: "默认" },
-  { value: "bell", label: "铃声" },
-  { value: "chime", label: "风铃" },
-  { value: "none", label: "静音" },
+  { value: "default", label: "默认铃声", desc: "系统通知提示音", Icon: Volume2 },
+  { value: "bell", label: "清脆铃声", desc: "经典闹铃声", Icon: BellRing },
+  { value: "chime", label: "风铃", desc: "轻柔风铃声", Icon: Wind },
+  { value: "marimba", label: "马林巴琴", desc: "温暖木琴音色", Icon: Music },
+  { value: "none", label: "静音", desc: "仅震动提醒", Icon: BellOff },
 ];
-
-const ALARM_SOUND_ICONS: Record<string, React.ReactNode> = {
-  default: <Volume2 size={14} color={PALETTE.textMuted} />,
-  bell: <BellRing size={14} color={PALETTE.textMuted} />,
-  chime: <Wind size={14} color={PALETTE.textMuted} />,
-  none: <BellOff size={14} color={PALETTE.textMuted} />,
-};
 
 // ─── 子组件 ──────────────────────────────────────────────────────────────────
 
@@ -61,53 +61,6 @@ function SectionHeader({
     <View style={s.sectionHeader}>
       {icon}
       <Text style={s.sectionTitle}>{title}</Text>
-    </View>
-  );
-}
-
-function PillGroup<T extends string | number>({
-  options,
-  value,
-  onChange,
-  renderIcon,
-}: {
-  options: readonly { value: T; label: string }[];
-  value: T;
-  onChange: (v: T) => void;
-  renderIcon?: (value: T, selected: boolean) => React.ReactNode;
-}) {
-  return (
-    <View style={s.pillRow}>
-      {options.map((opt) => {
-        const selected = opt.value === value;
-        return (
-          <Pressable
-            key={String(opt.value)}
-            style={[s.pill, selected && s.pillSelected]}
-            onPress={() => onChange(opt.value)}
-          >
-            {renderIcon?.(opt.value, selected)}
-            <Text style={[s.pillLabel, selected && s.pillLabelSelected]}>
-              {opt.label}
-            </Text>
-          </Pressable>
-        );
-      })}
-    </View>
-  );
-}
-
-function SettingRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={s.settingRow}>
-      <Text style={s.settingLabel}>{label}</Text>
-      {children}
     </View>
   );
 }
@@ -280,6 +233,110 @@ function StepperRow({
   );
 }
 
+function SoundPicker({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const soundRef = useRef<Audio.Sound | null>(null);
+
+  const handlePreview = useCallback(
+    async (soundValue: string) => {
+      if (soundValue === "none") return;
+
+      // 停止上一个正在播放的音频
+      if (soundRef.current) {
+        await soundRef.current.unloadAsync();
+        soundRef.current = null;
+      }
+
+      // 如果点击的是当前正在播放的，仅停止
+      if (playingId === soundValue) {
+        setPlayingId(null);
+        return;
+      }
+
+      const source = SOUND_ASSETS[soundValue];
+      if (!source) {
+        // 音频文件尚未放置，用 haptic 反馈占位
+        setPlayingId(soundValue);
+        await Haptics.notificationAsync(
+          Haptics.NotificationFeedbackType.Success,
+        );
+        setTimeout(() => setPlayingId(null), 600);
+        return;
+      }
+
+      try {
+        setPlayingId(soundValue);
+        const { sound } = await Audio.Sound.createAsync(source);
+        soundRef.current = sound;
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            setPlayingId(null);
+            sound.unloadAsync();
+            soundRef.current = null;
+          }
+        });
+        await sound.playAsync();
+      } catch {
+        setPlayingId(null);
+      }
+    },
+    [playingId],
+  );
+
+  return (
+    <View style={s.soundList}>
+      {ALARM_SOUNDS.map((sound) => {
+        const selected = value === sound.value;
+        const isPlaying = playingId === sound.value;
+        const canPreview = sound.value !== "none";
+
+        return (
+          <Pressable
+            key={sound.value}
+            style={[s.soundRow, selected && s.soundRowSelected]}
+            onPress={() => onChange(sound.value)}
+          >
+            {canPreview ? (
+              <Pressable
+                style={[s.soundPlayBtn, isPlaying && s.soundPlayBtnActive]}
+                onPress={() => handlePreview(sound.value)}
+                hitSlop={4}
+              >
+                <Play
+                  size={10}
+                  color={isPlaying ? "#FFF" : PALETTE.accent}
+                  fill={isPlaying ? "#FFF" : PALETTE.accent}
+                />
+              </Pressable>
+            ) : (
+              <View style={s.soundPlayPlaceholder} />
+            )}
+            <sound.Icon
+              size={18}
+              color={selected ? PALETTE.accentDark : PALETTE.textMuted}
+            />
+            <View style={s.soundTextWrap}>
+              <Text style={[s.soundName, selected && s.soundNameSelected]}>
+                {sound.label}
+              </Text>
+              <Text style={s.soundDesc}>{sound.desc}</Text>
+            </View>
+            {selected && (
+              <Check size={16} color={PALETTE.accent} strokeWidth={2.5} />
+            )}
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 // ─── 主页面 ──────────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
@@ -441,15 +498,15 @@ export default function SettingsScreen() {
 
         {/* 提醒 */}
         <View style={s.section}>
-          <SectionHeader icon={<Bell size={16} color={PALETTE.accent} />} title="提醒" />
-          <SettingRow label="提示音">
-            <PillGroup
-              options={ALARM_SOUNDS}
-              value={settings.alarmSound}
-              onChange={handleUpdate("alarmSound")}
-              renderIcon={(v) => ALARM_SOUND_ICONS[v]}
-            />
-          </SettingRow>
+          <SectionHeader
+            icon={<Bell size={16} color={PALETTE.accent} />}
+            title="提醒"
+          />
+          <Text style={s.soundSectionLabel}>提示音</Text>
+          <SoundPicker
+            value={settings.alarmSound}
+            onChange={handleUpdate("alarmSound")}
+          />
           <View style={s.divider} />
           <SwitchRow
             label="震动"
@@ -531,45 +588,57 @@ const s = StyleSheet.create({
     marginVertical: 14,
   },
 
-  // Setting row
-  settingRow: {
-    gap: 8,
+  // Sound picker
+  soundSectionLabel: {
+    fontSize: 13,
+    fontWeight: "500",
+    color: PALETTE.textMuted,
+    marginBottom: 8,
   },
-  settingLabel: {
+  soundList: {
+    gap: 2,
+  },
+  soundRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    borderRadius: 10,
+  },
+  soundRowSelected: {
+    backgroundColor: PALETTE.selectedBg,
+  },
+  soundPlayBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(232, 133, 58, 0.12)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  soundPlayBtnActive: {
+    backgroundColor: PALETTE.accent,
+  },
+  soundPlayPlaceholder: {
+    width: 28,
+  },
+  soundTextWrap: {
+    flex: 1,
+    gap: 1,
+  },
+  soundName: {
     fontSize: 14,
     fontWeight: "500",
     color: PALETTE.text,
   },
-
-  // Pills
-  pillRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: 8,
-  },
-  pill: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 20,
-    borderWidth: 1.5,
-    borderColor: PALETTE.cardBorder,
-    backgroundColor: PALETTE.warmWhite,
-  },
-  pillSelected: {
-    backgroundColor: PALETTE.selectedBg,
-    borderColor: PALETTE.selectedBorder,
-  },
-  pillLabel: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: PALETTE.textMuted,
-  },
-  pillLabelSelected: {
+  soundNameSelected: {
     color: PALETTE.accentDark,
     fontWeight: "600",
+  },
+  soundDesc: {
+    fontSize: 11,
+    color: PALETTE.textMuted,
   },
 
   // Switch row
