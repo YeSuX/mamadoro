@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -78,10 +78,16 @@ function SwitchRow({
 }) {
   return (
     <View style={s.switchRow}>
-      <View style={s.switchTextWrap}>
+      <Pressable
+        style={s.switchTextWrap}
+        onPress={() => {
+          Haptics.selectionAsync();
+          onChange(!value);
+        }}
+      >
         <Text style={s.switchLabel}>{label}</Text>
         {desc && <Text style={s.switchDesc}>{desc}</Text>}
-      </View>
+      </Pressable>
       <Switch
         value={value}
         onValueChange={onChange}
@@ -132,6 +138,7 @@ function CycleSummary({
             key={i}
             style={[
               s.cycleSeg,
+              { flex: seg.flex },
               seg.type === "work" && s.cycleSegWork,
               seg.type === "break" && s.cycleSegBreak,
               seg.type === "long" && s.cycleSegLong,
@@ -178,7 +185,7 @@ function StepperRow({
   const commitEdit = () => {
     setIsEditing(false);
     const num = parseInt(draft, 10);
-    if (!isNaN(num) && num > 0) {
+    if (!isNaN(num) && num * divisor >= min) {
       const stored = Math.min(max, Math.max(min, num * divisor));
       onChange(stored);
     }
@@ -189,8 +196,15 @@ function StepperRow({
       <Text style={s.stepperLabel}>{label}</Text>
       <View style={s.stepperControl}>
         <Pressable
-          style={[s.stepperBtn, !canDecrease && s.stepperBtnDisabled]}
-          onPress={() => canDecrease && onChange(value - step)}
+          style={({ pressed }) => [
+            s.stepperBtn,
+            !canDecrease && s.stepperBtnDisabled,
+            pressed && canDecrease && s.pressedItem,
+          ]}
+          onPress={() => {
+            Haptics.selectionAsync();
+            onChange(value - step);
+          }}
           disabled={!canDecrease}
         >
           <Minus
@@ -219,8 +233,15 @@ function StepperRow({
         )}
 
         <Pressable
-          style={[s.stepperBtn, !canIncrease && s.stepperBtnDisabled]}
-          onPress={() => canIncrease && onChange(value + step)}
+          style={({ pressed }) => [
+            s.stepperBtn,
+            !canIncrease && s.stepperBtnDisabled,
+            pressed && canIncrease && s.pressedItem,
+          ]}
+          onPress={() => {
+            Haptics.selectionAsync();
+            onChange(value + step);
+          }}
           disabled={!canIncrease}
         >
           <Plus
@@ -242,6 +263,12 @@ function SoundPicker({
 }) {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const soundRef = useRef<Audio.Sound | null>(null);
+
+  useEffect(() => {
+    return () => {
+      soundRef.current?.unloadAsync();
+    };
+  }, []);
 
   const handlePreview = useCallback(
     async (soundValue: string) => {
@@ -299,14 +326,25 @@ function SoundPicker({
         return (
           <Pressable
             key={sound.value}
-            style={[s.soundRow, selected && s.soundRowSelected]}
-            onPress={() => onChange(sound.value)}
+            style={({ pressed }) => [
+              s.soundRow,
+              selected && s.soundRowSelected,
+              pressed && !selected && s.pressedItem,
+            ]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              onChange(sound.value);
+            }}
           >
             {canPreview ? (
               <Pressable
-                style={[s.soundPlayBtn, isPlaying && s.soundPlayBtnActive]}
+                style={({ pressed }) => [
+                  s.soundPlayBtn,
+                  isPlaying && s.soundPlayBtnActive,
+                  pressed && !isPlaying && s.pressedItem,
+                ]}
                 onPress={() => handlePreview(sound.value)}
-                hitSlop={4}
+                hitSlop={8}
               >
                 <Play
                   size={10}
@@ -340,7 +378,7 @@ function SoundPicker({
 // ─── 主页面 ──────────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
-  const { settings, loading, update } = useSettings();
+  const { settings, loading, update, batchUpdate } = useSettings();
 
   const handleUpdate = useCallback(
     <K extends keyof Omit<AppSettings, "id">>(key: K) =>
@@ -362,6 +400,7 @@ export default function SettingsScreen() {
       <ScrollView
         contentContainerStyle={s.scrollContent}
         showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
       >
         <Text style={s.pageTitle}>设置</Text>
 
@@ -428,12 +467,19 @@ export default function SettingsScreen() {
               return (
                 <Pressable
                   key={preset.label}
-                  style={[s.presetPill, isActive && s.presetPillActive]}
+                  style={({ pressed }) => [
+                    s.presetPill,
+                    isActive && s.presetPillActive,
+                    pressed && !isActive && s.pressedItem,
+                  ]}
                   onPress={() => {
-                    update("workDuration", preset.work);
-                    update("shortBreakDuration", preset.shortBreak);
-                    update("longBreakDuration", preset.longBreak);
-                    update("roundsBeforeLongBreak", preset.rounds);
+                    Haptics.selectionAsync();
+                    batchUpdate({
+                      workDuration: preset.work,
+                      shortBreakDuration: preset.shortBreak,
+                      longBreakDuration: preset.longBreak,
+                      roundsBeforeLongBreak: preset.rounds,
+                    });
                   }}
                 >
                   <Text
@@ -459,8 +505,15 @@ export default function SettingsScreen() {
               return (
                 <Pressable
                   key={mode.value}
-                  style={[s.momCard, selected && s.momCardSelected]}
-                  onPress={() => update("momMode", mode.value)}
+                  style={({ pressed }) => [
+                    s.momCard,
+                    selected && s.momCardSelected,
+                    pressed && !selected && s.pressedItem,
+                  ]}
+                  onPress={() => {
+                    Haptics.selectionAsync();
+                    update("momMode", mode.value);
+                  }}
                 >
                   <Text style={s.momIcon}>{mode.icon}</Text>
                   <View style={s.momBody}>
@@ -817,6 +870,9 @@ const s = StyleSheet.create({
   presetLabelActive: {
     color: PALETTE.accentDark,
     fontWeight: "600",
+  },
+  pressedItem: {
+    opacity: 0.7,
   },
   bottomSpacer: {
     height: 32,

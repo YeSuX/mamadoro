@@ -74,5 +74,27 @@ export function useSettings() {
     [],
   );
 
-  return { settings: data, loading, update };
+  const batchUpdate = useCallback(
+    async (updates: Partial<Omit<AppSettings, "id">>) => {
+      setData((prev) => ({ ...prev, ...updates }));
+      const db = getDb();
+      const rows = await db
+        .select()
+        .from(settings)
+        .where(eq(settings.id, SETTINGS_ID));
+      if (rows.length > 0) {
+        await db
+          .update(settings)
+          .set(updates)
+          .where(eq(settings.id, SETTINGS_ID));
+      } else {
+        await db
+          .insert(settings)
+          .values({ ...DEFAULT_SETTINGS, ...updates });
+      }
+    },
+    [],
+  );
+
+  return { settings: data, loading, update, batchUpdate };
 }
