@@ -28,7 +28,6 @@ type TableDef = {
   pk: string | [string, string];
   fields: FieldDef[];
   genTestData: (ctx: {
-    userId?: string;
     taskId?: string;
     tagId?: string;
   }) => Record<string, unknown>;
@@ -36,35 +35,19 @@ type TableDef = {
 };
 
 const TABLES: Record<string, TableDef> = {
-  users: {
-    label: "Users",
-    table: schema.users,
-    pk: "id",
-    fields: [
-      { key: "nickname", type: "text" },
-      { key: "avatar", type: "text" },
-    ],
-    genTestData: () => ({
-      id: genId(),
-      nickname: `User_${Date.now() % 10000}`,
-    }),
-  },
   tasks: {
     label: "Tasks",
     table: schema.tasks,
     pk: "id",
     fields: [
-      { key: "userId", type: "text" },
       { key: "title", type: "text" },
       { key: "status", type: "text" },
       { key: "estimatedPomodoros", type: "number" },
       { key: "completedPomodoros", type: "number" },
       { key: "sortOrder", type: "number" },
     ],
-    requires: ["userId"],
-    genTestData: ({ userId }) => ({
+    genTestData: () => ({
       id: genId(),
-      userId,
       title: `Task_${Date.now() % 10000}`,
       status: "TODO",
       estimatedPomodoros: Math.floor(Math.random() * 5) + 1,
@@ -75,7 +58,6 @@ const TABLES: Record<string, TableDef> = {
     table: schema.pomodoros,
     pk: "id",
     fields: [
-      { key: "userId", type: "text" },
       { key: "taskId", type: "text" },
       { key: "status", type: "text" },
       { key: "plannedDuration", type: "number" },
@@ -83,10 +65,8 @@ const TABLES: Record<string, TableDef> = {
       { key: "startedAt", type: "text" },
       { key: "endedAt", type: "text" },
     ],
-    requires: ["userId"],
-    genTestData: ({ userId, taskId }) => ({
+    genTestData: ({ taskId }) => ({
       id: genId(),
-      userId,
       taskId: taskId ?? null,
       status: "COMPLETED",
       plannedDuration: 1500,
@@ -100,14 +80,11 @@ const TABLES: Record<string, TableDef> = {
     table: schema.tags,
     pk: "id",
     fields: [
-      { key: "userId", type: "text" },
       { key: "name", type: "text" },
       { key: "color", type: "text" },
     ],
-    requires: ["userId"],
-    genTestData: ({ userId }) => ({
+    genTestData: () => ({
       id: genId(),
-      userId,
       name: `Tag_${Date.now() % 10000}`,
       color: `#${Math.floor(Math.random() * 0xffffff)
         .toString(16)
@@ -130,7 +107,6 @@ const TABLES: Record<string, TableDef> = {
     table: schema.settings,
     pk: "id",
     fields: [
-      { key: "userId", type: "text" },
       { key: "workDuration", type: "number" },
       { key: "shortBreakDuration", type: "number" },
       { key: "longBreakDuration", type: "number" },
@@ -142,8 +118,7 @@ const TABLES: Record<string, TableDef> = {
       { key: "autoStartWork", type: "boolean" },
       { key: "momMode", type: "text" },
     ],
-    requires: ["userId"],
-    genTestData: ({ userId }) => ({ id: genId(), userId }),
+    genTestData: () => ({ id: genId() }),
   },
 };
 
@@ -151,13 +126,11 @@ const TABLE_KEYS = Object.keys(TABLES);
 
 async function fetchContext() {
   const db = getDb();
-  const [allUsers, allTasks, allTags] = await Promise.all([
-    db.select().from(schema.users),
+  const [allTasks, allTags] = await Promise.all([
     db.select().from(schema.tasks),
     db.select().from(schema.tags),
   ]);
   return {
-    userId: allUsers[0]?.id,
     taskId: allTasks[0]?.id,
     tagId: allTags[0]?.id,
   };

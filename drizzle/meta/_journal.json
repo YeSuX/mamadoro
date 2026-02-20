@@ -15,6 +15,13 @@
       "when": 1771570594045,
       "tag": "0001_dear_hercules",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1771573197177,
+      "tag": "0002_useful_leo",
+      "breakpoints": true
     }
   ]
 }
