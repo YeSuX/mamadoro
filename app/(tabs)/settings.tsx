@@ -9,7 +9,17 @@ import {
   Text,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  Timer,
+  Heart,
+  Zap,
+  Bell,
+  BellRing,
+  Wind,
+  BellOff,
+  Volume2,
+} from "lucide-react-native";
 import { PALETTE, MOM_MODES } from "@/components/onboarding/constants";
 import { useSettings, type AppSettings } from "@/hooks/use-settings";
 
@@ -41,26 +51,46 @@ const ROUNDS_OPTIONS = [
 ];
 
 const ALARM_SOUNDS = [
-  { value: "default", label: "默认", icon: "🔔" },
-  { value: "bell", label: "铃声", icon: "🛎️" },
-  { value: "chime", label: "风铃", icon: "🎐" },
-  { value: "none", label: "静音", icon: "🔇" },
+  { value: "default", label: "默认" },
+  { value: "bell", label: "铃声" },
+  { value: "chime", label: "风铃" },
+  { value: "none", label: "静音" },
 ];
+
+const ALARM_SOUND_ICONS: Record<string, React.ReactNode> = {
+  default: <Volume2 size={14} color={PALETTE.textMuted} />,
+  bell: <BellRing size={14} color={PALETTE.textMuted} />,
+  chime: <Wind size={14} color={PALETTE.textMuted} />,
+  none: <BellOff size={14} color={PALETTE.textMuted} />,
+};
 
 // ─── 子组件 ──────────────────────────────────────────────────────────────────
 
-function SectionHeader({ title }: { title: string }) {
-  return <Text style={s.sectionTitle}>{title}</Text>;
+function SectionHeader({
+  icon,
+  title,
+}: {
+  icon: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <View style={s.sectionHeader}>
+      {icon}
+      <Text style={s.sectionTitle}>{title}</Text>
+    </View>
+  );
 }
 
 function PillGroup<T extends string | number>({
   options,
   value,
   onChange,
+  renderIcon,
 }: {
-  options: readonly { value: T; label: string; icon?: string }[];
+  options: readonly { value: T; label: string }[];
   value: T;
   onChange: (v: T) => void;
+  renderIcon?: (value: T, selected: boolean) => React.ReactNode;
 }) {
   return (
     <View style={s.pillRow}>
@@ -72,7 +102,7 @@ function PillGroup<T extends string | number>({
             style={[s.pill, selected && s.pillSelected]}
             onPress={() => onChange(opt.value)}
           >
-            {opt.icon && <Text style={s.pillIcon}>{opt.icon}</Text>}
+            {renderIcon?.(opt.value, selected)}
             <Text style={[s.pillLabel, selected && s.pillLabelSelected]}>
               {opt.label}
             </Text>
@@ -156,7 +186,7 @@ export default function SettingsScreen() {
 
         {/* 专注时长 */}
         <View style={s.section}>
-          <SectionHeader title="⏱️ 专注时长" />
+          <SectionHeader icon={<Timer size={16} color={PALETTE.accent} />} title="专注时长" />
           <SettingRow label="工作时长">
             <PillGroup
               options={WORK_DURATIONS}
@@ -192,7 +222,7 @@ export default function SettingsScreen() {
 
         {/* 妈妈模式 */}
         <View style={s.section}>
-          <SectionHeader title="👩 妈妈模式" />
+          <SectionHeader icon={<Heart size={16} color={PALETTE.accent} />} title="妈妈模式" />
           <View style={s.momModeList}>
             {MOM_MODES.map((mode) => {
               const selected = settings.momMode === mode.value;
@@ -220,7 +250,7 @@ export default function SettingsScreen() {
 
         {/* 自动化 */}
         <View style={s.section}>
-          <SectionHeader title="⚡ 自动化" />
+          <SectionHeader icon={<Zap size={16} color={PALETTE.accent} />} title="自动化" />
           <SwitchRow
             label="工作后自动休息"
             desc="完成一轮工作后自动开始休息"
@@ -238,12 +268,13 @@ export default function SettingsScreen() {
 
         {/* 提醒 */}
         <View style={s.section}>
-          <SectionHeader title="🔔 提醒" />
+          <SectionHeader icon={<Bell size={16} color={PALETTE.accent} />} title="提醒" />
           <SettingRow label="提示音">
             <PillGroup
               options={ALARM_SOUNDS}
               value={settings.alarmSound}
               onChange={handleUpdate("alarmSound")}
+              renderIcon={(v) => ALARM_SOUND_ICONS[v]}
             />
           </SettingRow>
           <View style={s.divider} />
@@ -310,11 +341,16 @@ const s = StyleSheet.create({
       android: { elevation: 2 },
     }),
   },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 14,
+  },
   sectionTitle: {
     fontSize: 15,
     fontWeight: "600",
     color: PALETTE.text,
-    marginBottom: 14,
   },
   divider: {
     height: StyleSheet.hairlineWidth,
@@ -352,9 +388,6 @@ const s = StyleSheet.create({
   pillSelected: {
     backgroundColor: PALETTE.selectedBg,
     borderColor: PALETTE.selectedBorder,
-  },
-  pillIcon: {
-    fontSize: 14,
   },
   pillLabel: {
     fontSize: 13,
