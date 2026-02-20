@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -7,6 +7,7 @@ import {
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -19,35 +20,18 @@ import {
   Wind,
   BellOff,
   Volume2,
+  Minus,
+  Plus,
 } from "lucide-react-native";
 import { PALETTE, MOM_MODES } from "@/components/onboarding/constants";
 import { useSettings, type AppSettings } from "@/hooks/use-settings";
 
 // ─── 选项定义 ──────────────────────────────────────────────────────────────────
 
-const WORK_DURATIONS = [
-  { value: 900, label: "15 分钟" },
-  { value: 1500, label: "25 分钟" },
-  { value: 2700, label: "45 分钟" },
-];
-
-const SHORT_BREAK_DURATIONS = [
-  { value: 180, label: "3 分钟" },
-  { value: 300, label: "5 分钟" },
-  { value: 600, label: "10 分钟" },
-];
-
-const LONG_BREAK_DURATIONS = [
-  { value: 900, label: "15 分钟" },
-  { value: 1200, label: "20 分钟" },
-  { value: 1800, label: "30 分钟" },
-];
-
-const ROUNDS_OPTIONS = [
-  { value: 2, label: "2 轮" },
-  { value: 3, label: "3 轮" },
-  { value: 4, label: "4 轮" },
-  { value: 6, label: "6 轮" },
+const FOCUS_PRESETS = [
+  { label: "经典番茄", work: 1500, shortBreak: 300, longBreak: 1800, rounds: 4 },
+  { label: "短冲刺", work: 900, shortBreak: 180, longBreak: 900, rounds: 4 },
+  { label: "深度工作", work: 2700, shortBreak: 600, longBreak: 1800, rounds: 3 },
 ];
 
 const ALARM_SOUNDS = [
@@ -156,6 +140,146 @@ function SwitchRow({
   );
 }
 
+function CycleSummary({
+  work,
+  shortBreak,
+  longBreak,
+  rounds,
+}: {
+  work: number;
+  shortBreak: number;
+  longBreak: number;
+  rounds: number;
+}) {
+  const workMin = Math.round(work / 60);
+  const shortMin = Math.round(shortBreak / 60);
+  const longMin = Math.round(longBreak / 60);
+  const totalMin = workMin * rounds + shortMin * (rounds - 1) + longMin;
+  const hours = Math.floor(totalMin / 60);
+  const mins = totalMin % 60;
+  const totalText =
+    hours > 0
+      ? mins > 0
+        ? `${hours} 小时 ${mins} 分钟`
+        : `${hours} 小时`
+      : `${mins} 分钟`;
+
+  const segments: { type: "work" | "break" | "long"; flex: number }[] = [];
+  for (let i = 0; i < rounds; i++) {
+    segments.push({ type: "work", flex: workMin });
+    if (i < rounds - 1) segments.push({ type: "break", flex: shortMin });
+  }
+  segments.push({ type: "long", flex: longMin });
+
+  return (
+    <View style={s.cycleSummary}>
+      <View style={s.cycleBar}>
+        {segments.map((seg, i) => (
+          <View
+            key={i}
+            style={[
+              s.cycleSeg,
+              seg.type === "work" && s.cycleSegWork,
+              seg.type === "break" && s.cycleSegBreak,
+              seg.type === "long" && s.cycleSegLong,
+            ]}
+          />
+        ))}
+      </View>
+      <Text style={s.cycleText}>一轮周期 ≈ {totalText}</Text>
+    </View>
+  );
+}
+
+function StepperRow({
+  label,
+  value,
+  onChange,
+  step,
+  min,
+  max,
+  divisor = 1,
+  unit,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  step: number;
+  min: number;
+  max: number;
+  divisor?: number;
+  unit: string;
+}) {
+  const [isEditing, setIsEditing] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  const displayValue = Math.round(value / divisor);
+  const canDecrease = value - step >= min;
+  const canIncrease = value + step <= max;
+
+  const startEditing = () => {
+    setDraft(String(displayValue));
+    setIsEditing(true);
+  };
+
+  const commitEdit = () => {
+    setIsEditing(false);
+    const num = parseInt(draft, 10);
+    if (!isNaN(num) && num > 0) {
+      const stored = Math.min(max, Math.max(min, num * divisor));
+      onChange(stored);
+    }
+  };
+
+  return (
+    <View style={s.stepperRow}>
+      <Text style={s.stepperLabel}>{label}</Text>
+      <View style={s.stepperControl}>
+        <Pressable
+          style={[s.stepperBtn, !canDecrease && s.stepperBtnDisabled]}
+          onPress={() => canDecrease && onChange(value - step)}
+          disabled={!canDecrease}
+        >
+          <Minus
+            size={14}
+            color={canDecrease ? PALETTE.accent : PALETTE.textLight}
+          />
+        </Pressable>
+
+        {isEditing ? (
+          <TextInput
+            style={s.stepperInput}
+            value={draft}
+            onChangeText={setDraft}
+            onBlur={commitEdit}
+            onSubmitEditing={commitEdit}
+            keyboardType="number-pad"
+            returnKeyType="done"
+            autoFocus
+            selectTextOnFocus
+          />
+        ) : (
+          <Pressable style={s.stepperValueWrap} onPress={startEditing}>
+            <Text style={s.stepperValue}>{displayValue}</Text>
+            <Text style={s.stepperUnit}>{unit}</Text>
+          </Pressable>
+        )}
+
+        <Pressable
+          style={[s.stepperBtn, !canIncrease && s.stepperBtnDisabled]}
+          onPress={() => canIncrease && onChange(value + step)}
+          disabled={!canIncrease}
+        >
+          <Plus
+            size={14}
+            color={canIncrease ? PALETTE.accent : PALETTE.textLight}
+          />
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
 // ─── 主页面 ──────────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
@@ -186,38 +310,87 @@ export default function SettingsScreen() {
 
         {/* 专注时长 */}
         <View style={s.section}>
-          <SectionHeader icon={<Timer size={16} color={PALETTE.accent} />} title="专注时长" />
-          <SettingRow label="工作时长">
-            <PillGroup
-              options={WORK_DURATIONS}
-              value={settings.workDuration}
-              onChange={handleUpdate("workDuration")}
-            />
-          </SettingRow>
+          <SectionHeader
+            icon={<Timer size={16} color={PALETTE.accent} />}
+            title="专注时长"
+          />
+          <CycleSummary
+            work={settings.workDuration}
+            shortBreak={settings.shortBreakDuration}
+            longBreak={settings.longBreakDuration}
+            rounds={settings.roundsBeforeLongBreak}
+          />
           <View style={s.divider} />
-          <SettingRow label="短休息">
-            <PillGroup
-              options={SHORT_BREAK_DURATIONS}
-              value={settings.shortBreakDuration}
-              onChange={handleUpdate("shortBreakDuration")}
-            />
-          </SettingRow>
+          <StepperRow
+            label="工作"
+            value={settings.workDuration}
+            onChange={handleUpdate("workDuration")}
+            step={300}
+            min={300}
+            max={7200}
+            divisor={60}
+            unit="分钟"
+          />
+          <StepperRow
+            label="短休息"
+            value={settings.shortBreakDuration}
+            onChange={handleUpdate("shortBreakDuration")}
+            step={60}
+            min={60}
+            max={1800}
+            divisor={60}
+            unit="分钟"
+          />
+          <StepperRow
+            label="长休息"
+            value={settings.longBreakDuration}
+            onChange={handleUpdate("longBreakDuration")}
+            step={300}
+            min={300}
+            max={3600}
+            divisor={60}
+            unit="分钟"
+          />
+          <StepperRow
+            label="轮数"
+            value={settings.roundsBeforeLongBreak}
+            onChange={handleUpdate("roundsBeforeLongBreak")}
+            step={1}
+            min={1}
+            max={12}
+            unit="轮"
+          />
           <View style={s.divider} />
-          <SettingRow label="长休息">
-            <PillGroup
-              options={LONG_BREAK_DURATIONS}
-              value={settings.longBreakDuration}
-              onChange={handleUpdate("longBreakDuration")}
-            />
-          </SettingRow>
-          <View style={s.divider} />
-          <SettingRow label="长休息间隔">
-            <PillGroup
-              options={ROUNDS_OPTIONS}
-              value={settings.roundsBeforeLongBreak}
-              onChange={handleUpdate("roundsBeforeLongBreak")}
-            />
-          </SettingRow>
+          <View style={s.presetRow}>
+            {FOCUS_PRESETS.map((preset) => {
+              const isActive =
+                preset.work === settings.workDuration &&
+                preset.shortBreak === settings.shortBreakDuration &&
+                preset.longBreak === settings.longBreakDuration &&
+                preset.rounds === settings.roundsBeforeLongBreak;
+              return (
+                <Pressable
+                  key={preset.label}
+                  style={[s.presetPill, isActive && s.presetPillActive]}
+                  onPress={() => {
+                    update("workDuration", preset.work);
+                    update("shortBreakDuration", preset.shortBreak);
+                    update("longBreakDuration", preset.longBreak);
+                    update("roundsBeforeLongBreak", preset.rounds);
+                  }}
+                >
+                  <Text
+                    style={[
+                      s.presetLabel,
+                      isActive && s.presetLabelActive,
+                    ]}
+                  >
+                    {preset.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </View>
 
         {/* 妈妈模式 */}
@@ -462,6 +635,119 @@ const s = StyleSheet.create({
     fontSize: 16,
     color: PALETTE.accent,
     fontWeight: "700",
+  },
+  // Cycle summary
+  cycleSummary: {
+    gap: 6,
+  },
+  cycleBar: {
+    flexDirection: "row",
+    height: 6,
+    borderRadius: 3,
+    overflow: "hidden",
+    gap: 2,
+  },
+  cycleSeg: {
+    borderRadius: 3,
+  },
+  cycleSegWork: {
+    backgroundColor: PALETTE.accent,
+  },
+  cycleSegBreak: {
+    backgroundColor: "#E5D8C8",
+  },
+  cycleSegLong: {
+    backgroundColor: PALETTE.textLight,
+  },
+  cycleText: {
+    fontSize: 12,
+    color: PALETTE.textMuted,
+    textAlign: "center",
+  },
+
+  // Stepper
+  stepperRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    height: 44,
+  },
+  stepperLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: PALETTE.text,
+  },
+  stepperControl: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: PALETTE.warmWhite,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: PALETTE.cardBorder,
+  },
+  stepperBtn: {
+    width: 36,
+    height: 36,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  stepperBtnDisabled: {
+    opacity: 0.35,
+  },
+  stepperValueWrap: {
+    flexDirection: "row",
+    alignItems: "baseline",
+    justifyContent: "center",
+    gap: 2,
+    minWidth: 56,
+    paddingHorizontal: 2,
+  },
+  stepperValue: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: PALETTE.accentDark,
+    textAlign: "center",
+  },
+  stepperUnit: {
+    fontSize: 11,
+    color: PALETTE.textMuted,
+  },
+  stepperInput: {
+    minWidth: 48,
+    height: 36,
+    fontSize: 15,
+    fontWeight: "600",
+    color: PALETTE.accentDark,
+    textAlign: "center",
+    paddingHorizontal: 4,
+  },
+
+  // Presets
+  presetRow: {
+    flexDirection: "row",
+    gap: 8,
+  },
+  presetPill: {
+    flex: 1,
+    paddingVertical: 8,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: PALETTE.cardBorder,
+    backgroundColor: PALETTE.warmWhite,
+    alignItems: "center",
+  },
+  presetPillActive: {
+    backgroundColor: PALETTE.selectedBg,
+    borderColor: PALETTE.selectedBorder,
+  },
+  presetLabel: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: PALETTE.textMuted,
+  },
+  presetLabelActive: {
+    color: PALETTE.accentDark,
+    fontWeight: "600",
   },
   bottomSpacer: {
     height: 32,
