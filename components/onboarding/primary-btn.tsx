@@ -1,3 +1,4 @@
+import * as Haptics from "expo-haptics";
 import { Pressable, StyleSheet, Text } from "react-native";
 
 import { PALETTE } from "./constants";
@@ -9,9 +10,14 @@ export function PrimaryBtn({
   label: string;
   onPress: () => void;
 }) {
+  const handlePress = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onPress();
+  };
+
   return (
     <Pressable
-      onPress={onPress}
+      onPress={handlePress}
       style={({ pressed }) => [
         styles.primaryBtn,
         pressed && styles.primaryBtnPressed,
