@@ -71,6 +71,7 @@ export const MOM_MODES = [
     tagline: "「宝贝加油，你最棒了」",
     desc1: "鼓励为主，温柔提醒",
     desc2: "放弃了也不骂你",
+    mamaReply: "好好好，\n妈温柔着来",
   },
   {
     value: "standard" as const,
@@ -80,6 +81,7 @@ export const MOM_MODES = [
     desc1: "表扬与批评并存",
     desc2: "放弃了会念叨你",
     recommended: true,
+    mamaReply: "严是为你好，\n懂不懂？",
   },
   {
     value: "strict" as const,
@@ -88,6 +90,7 @@ export const MOM_MODES = [
     tagline: "「就这？再来！」",
     desc1: "高标准严要求",
     desc2: "放弃了...后果自负",
+    mamaReply: "虎妈？\n你可想好了啊",
   },
 ] as const;
 

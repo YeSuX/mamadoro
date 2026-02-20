@@ -1,6 +1,7 @@
+import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useCallback, useRef, useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
   runOnJS,
   useAnimatedStyle,
@@ -22,6 +23,8 @@ import { TypewriterText } from "@/components/onboarding/typewriter-text";
 import { StepWelcome } from "@/components/onboarding/step-welcome";
 import { createDefaultSettings } from "@/services/settings";
 
+const STEPS: Step[] = [0, 1, 2, 3];
+
 export default function OnboardingScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -35,6 +38,7 @@ export default function OnboardingScreen() {
   const bubbleOpacity = useSharedValue(1);
   const pendingStepRef = useRef<Step | null>(null);
   const pendingBubbleRef = useRef<string | null>(null);
+  const isTransitioning = useRef(false);
 
   // ── 转场：内容区淡出→切换→淡入 ──────────────────────────────────────────────
   const applyStep = useCallback(() => {
@@ -44,12 +48,15 @@ export default function OnboardingScreen() {
       setDynamicBubble(null);
       pendingStepRef.current = null;
     }
+    isTransitioning.current = false;
     contentOpacity.value = withTiming(1, { duration: 280 });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const transitionTo = useCallback(
     (nextStep: Step) => {
+      if (isTransitioning.current) return;
+      isTransitioning.current = true;
       pendingStepRef.current = nextStep;
       contentOpacity.value = withTiming(0, { duration: 200 }, (finished) => {
         if (finished) runOnJS(applyStep)();
@@ -58,6 +65,12 @@ export default function OnboardingScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [applyStep],
   );
+
+  const goBack = useCallback(() => {
+    if (step === 0) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    transitionTo((step - 1) as Step);
+  }, [step, transitionTo]);
 
   // ── 气泡动态更新 ──────────────────────────────────────────────────────────────
   const applyBubble = useCallback(() => {
@@ -117,6 +130,27 @@ export default function OnboardingScreen() {
         </View>
       </View>
 
+      {/* ── 进度指示器 ── */}
+      <View style={styles.indicator}>
+        <Pressable
+          style={styles.backBtn}
+          onPress={goBack}
+          hitSlop={12}
+          disabled={step === 0}
+        >
+          {step > 0 && <Text style={styles.backText}>‹</Text>}
+        </Pressable>
+        <View style={styles.dots}>
+          {STEPS.map((s) => (
+            <View
+              key={s}
+              style={[styles.dot, s <= step && styles.dotActive]}
+            />
+          ))}
+        </View>
+        <View style={styles.backBtn} />
+      </View>
+
       {/* ── 内容区（随步骤切换）── */}
       <Animated.View style={[styles.contentZone, contentAnimStyle]}>
         {step === 0 && (
@@ -139,7 +173,10 @@ export default function OnboardingScreen() {
         {step === 2 && (
           <StepMomMode
             selected={momMode}
-            onSelect={setMomMode}
+            onSelect={(mode, reply) => {
+              setMomMode(mode);
+              updateBubble(reply);
+            }}
             onNext={() => transitionTo(3)}
             bottomInset={insets.bottom}
           />
@@ -232,6 +269,42 @@ const styles = StyleSheet.create({
     right: -4,
     fontSize: 20,
   },
+
+  // ── 进度指示器 ──
+  indicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 24,
+    paddingVertical: 10,
+  },
+  backBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  backText: {
+    fontSize: 28,
+    fontWeight: "300",
+    color: PALETTE.textMuted,
+    lineHeight: 32,
+  },
+  dots: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  dot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: PALETTE.cardBorder,
+  },
+  dotActive: {
+    backgroundColor: PALETTE.accent,
+  },
+
   contentZone: {
     flex: 1,
   },

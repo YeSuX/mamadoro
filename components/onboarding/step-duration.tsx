@@ -1,3 +1,4 @@
+import * as Haptics from "expo-haptics";
 import { Pressable, Text, View } from "react-native";
 
 import { DURATION_OPTIONS, sharedStyles } from "./constants";
@@ -22,7 +23,10 @@ export function StepDuration({
           return (
             <Pressable
               key={opt.value}
-              onPress={() => onSelect(opt.value, opt.mamaReply)}
+              onPress={() => {
+                Haptics.selectionAsync();
+                onSelect(opt.value, opt.mamaReply);
+              }}
               style={({ pressed }) => [
                 sharedStyles.card,
                 isSelected && sharedStyles.cardSelected,

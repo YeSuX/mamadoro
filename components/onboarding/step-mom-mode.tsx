@@ -1,3 +1,4 @@
+import * as Haptics from "expo-haptics";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import { type MomMode, MOM_MODES, PALETTE, sharedStyles } from "./constants";
@@ -10,7 +11,7 @@ export function StepMomMode({
   bottomInset,
 }: {
   selected: MomMode;
-  onSelect: (mode: MomMode) => void;
+  onSelect: (mode: MomMode, mamaReply: string) => void;
   onNext: () => void;
   bottomInset: number;
 }) {
@@ -22,7 +23,10 @@ export function StepMomMode({
           return (
             <Pressable
               key={mode.value}
-              onPress={() => onSelect(mode.value)}
+              onPress={() => {
+                Haptics.selectionAsync();
+                onSelect(mode.value, mode.mamaReply);
+              }}
               style={({ pressed }) => [
                 sharedStyles.card,
                 styles.cardTall,

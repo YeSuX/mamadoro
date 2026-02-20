@@ -1,3 +1,4 @@
+import * as Haptics from "expo-haptics";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { type MomMode, MOM_MODE_LABELS, PALETTE, sharedStyles } from "./constants";
@@ -20,21 +21,32 @@ export function StepComplete({
 
   return (
     <View style={sharedStyles.stepWrap}>
-      <View style={styles.summaryCard}>
-        <Text style={styles.summaryTitle}>你的设置</Text>
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryIcon}>⏱</Text>
-          <Text style={styles.summaryValue}>{minutes} 分钟 / 个</Text>
+      <View style={styles.summaryCenter}>
+        <View style={styles.summaryCard}>
+          <Text style={styles.summaryTitle}>你的设置</Text>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryIcon}>⏱</Text>
+            <Text style={styles.summaryValue}>{minutes} 分钟 / 个</Text>
+          </View>
+          <View style={styles.summaryRow}>
+            <Text style={styles.summaryIcon}>👩</Text>
+            <Text style={styles.summaryValue}>{MOM_MODE_LABELS[momMode]}</Text>
+          </View>
+          <Text style={styles.summaryHint}>随时可以去设置修改</Text>
         </View>
-        <View style={styles.summaryRow}>
-          <Text style={styles.summaryIcon}>👩</Text>
-          <Text style={styles.summaryValue}>{MOM_MODE_LABELS[momMode]}</Text>
-        </View>
-        <Text style={styles.summaryHint}>随时可以去设置修改</Text>
       </View>
       <View style={[sharedStyles.btnGroup, { paddingBottom: bottomInset + 24 }]}>
         <PrimaryBtn label="来，先来一个试试 🍅" onPress={onStart} />
-        <Pressable onPress={onSkip} style={styles.skipBtn}>
+        <Pressable
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onSkip();
+          }}
+          style={({ pressed }) => [
+            styles.skipBtn,
+            pressed && styles.skipBtnPressed,
+          ]}
+        >
           <Text style={styles.skipText}>晚点再说</Text>
         </Pressable>
       </View>
@@ -43,6 +55,10 @@ export function StepComplete({
 }
 
 const styles = StyleSheet.create({
+  summaryCenter: {
+    flex: 1,
+    justifyContent: "center",
+  },
   summaryCard: {
     backgroundColor: PALETTE.cardBg,
     borderRadius: 16,
@@ -87,6 +103,9 @@ const styles = StyleSheet.create({
   skipBtn: {
     alignItems: "center",
     paddingVertical: 8,
+  },
+  skipBtnPressed: {
+    opacity: 0.6,
   },
   skipText: {
     fontSize: 14,
