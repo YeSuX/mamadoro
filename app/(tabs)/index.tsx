@@ -6,6 +6,7 @@ import Animated, {
   FadeIn,
   FadeInUp,
 } from "react-native-reanimated";
+import { useFocusEffect } from "expo-router";
 
 import { MamaBubble } from "@/components/mama-bubble";
 import { PALETTE } from "@/components/onboarding/constants";
@@ -47,8 +48,17 @@ export default function HomeScreen() {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
 
-  const { settings, loading: settingsLoading } = useSettings();
+  const { settings, loading: settingsLoading, reload: reloadSettings } = useSettings();
   const { create: createPomodoro, complete: completePomodoro } = usePomodoro();
+  
+  // 当 tab 获得焦点时重新加载设置（仅在非运行状态）
+  useFocusEffect(
+    useCallback(() => {
+      if (phase !== "running") {
+        reloadSettings();
+      }
+    }, [phase, reloadSettings])
+  );
   const { create: createTask, incrementPomodoro } = useTasks();
   const { tags: availableTags, create: createTag, addToTask } = useTags();
   const { completedCount, refresh: refreshStats } = useDailyStats();

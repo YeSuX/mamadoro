@@ -96,5 +96,5 @@ export function useSettings() {
     [],
   );
 
-  return { settings: data, loading, update, batchUpdate };
+  return { settings: data, loading, update, batchUpdate, reload: load };
 }
