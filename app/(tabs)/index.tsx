@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
+import Animated, { BounceIn, FadeInUp } from "react-native-reanimated";
 
 import { MamaBubble } from "@/components/mama-bubble";
 import { PALETTE } from "@/components/onboarding/constants";
@@ -10,6 +11,7 @@ import { TimerRing } from "@/components/timer-ring";
 import { useDailyStats } from "@/hooks/use-daily-stats";
 import { usePomodoro } from "@/hooks/use-pomodoro";
 import { useSettings } from "@/hooks/use-settings";
+import { useSound } from "@/hooks/use-sound";
 import { useTags } from "@/hooks/use-tags";
 import { useTasks } from "@/hooks/use-tasks";
 import { useTimer } from "@/hooks/use-timer";
@@ -34,6 +36,7 @@ export default function HomeScreen() {
   const { create: createTask, incrementPomodoro } = useTasks();
   const { tags: availableTags, create: createTag, addToTask } = useTags();
   const { completedCount, refresh: refreshStats } = useDailyStats();
+  const { play: playSound } = useSound();
 
   // ── 核心：开始计时 ──
   const startTimer = useCallback(
@@ -50,6 +53,12 @@ export default function HomeScreen() {
 
   // ── 计时器完成回调 ──
   const handleComplete = useCallback(async () => {
+    // 即时反馈：音效 + 震动
+    playSound(settings.alarmSound);
+    if (settings.vibrationEnabled) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }
+
     if (pomodoroId) {
       await completePomodoro(pomodoroId, settings.workDuration);
     }
@@ -64,14 +73,20 @@ export default function HomeScreen() {
     pomodoroId,
     taskId,
     settings.workDuration,
+    settings.alarmSound,
+    settings.vibrationEnabled,
     completePomodoro,
     incrementPomodoro,
     refreshStats,
+    playSound,
   ]);
 
   const timer = useTimer({
     duration: settings.workDuration,
-    onHalfway: () => setMamaBubble("过半了，加油"),
+    onHalfway: () => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      setMamaBubble("过半了，加油");
+    },
     onComplete: handleComplete,
   });
 
@@ -230,19 +245,44 @@ export default function HomeScreen() {
         {/* ── 完成 ── */}
         {phase === "completed" && (
           <View style={s.centered}>
-            <Text style={s.celebrationEmoji}>🍅</Text>
-            <Text style={s.completedTitle}>完成！</Text>
-            {taskTitle && (
-              <Text style={s.completedTask}>「{taskTitle}」</Text>
-            )}
-            <Text style={s.statsText}>今日 🍅×{completedCount}</Text>
-
-            <Pressable
-              style={({ pressed }) => [s.bigBtn, pressed && s.bigBtnPressed]}
-              onPress={handleReset}
+            <Animated.Text
+              entering={BounceIn.delay(100).duration(600)}
+              style={s.celebrationEmoji}
             >
-              <Text style={s.bigBtnText}>再来一个</Text>
-            </Pressable>
+              🍅
+            </Animated.Text>
+
+            <Animated.Text
+              entering={FadeInUp.delay(300).duration(400)}
+              style={s.completedTitle}
+            >
+              完成！
+            </Animated.Text>
+
+            {taskTitle && (
+              <Animated.Text
+                entering={FadeInUp.delay(450).duration(400)}
+                style={s.completedTask}
+              >
+                「{taskTitle}」
+              </Animated.Text>
+            )}
+
+            <Animated.Text
+              entering={FadeInUp.delay(600).duration(400)}
+              style={s.statsText}
+            >
+              今日 🍅×{completedCount}
+            </Animated.Text>
+
+            <Animated.View entering={FadeInUp.delay(750).duration(400)}>
+              <Pressable
+                style={({ pressed }) => [s.bigBtn, pressed && s.bigBtnPressed]}
+                onPress={handleReset}
+              >
+                <Text style={s.bigBtnText}>再来一个</Text>
+              </Pressable>
+            </Animated.View>
           </View>
         )}
       </View>
