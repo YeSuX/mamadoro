@@ -2,8 +2,9 @@ import { useCallback, useState } from "react";
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
 
+import { MamaBubble } from "@/components/mama-bubble";
 import { PALETTE } from "@/components/onboarding/constants";
-import { TypewriterText } from "@/components/onboarding/typewriter-text";
+import { TimerRing } from "@/components/timer-ring";
 import { useDailyStats } from "@/hooks/use-daily-stats";
 import { usePomodoro } from "@/hooks/use-pomodoro";
 import { useSettings } from "@/hooks/use-settings";
@@ -77,12 +78,7 @@ export default function HomeScreen() {
     <SafeAreaView style={s.container}>
       {/* ── 妈妈区域 ── */}
       <View style={s.mamaSection}>
-        <View style={s.avatarWrap}>
-          <Text style={s.avatar}>👩</Text>
-        </View>
-        <View style={s.bubble}>
-          <TypewriterText text={mamaBubble} style={s.bubbleText} speed={40} />
-        </View>
+        <MamaBubble text={mamaBubble} />
       </View>
 
       {/* ── 主内容 ── */}
@@ -105,18 +101,11 @@ export default function HomeScreen() {
 
         {phase === "running" && (
           <View style={s.centered}>
-            <Text style={s.timerText}>
-              {formatTime(timer.remainingSeconds)}
-            </Text>
-
-            <View style={s.progressTrack}>
-              <View
-                style={[
-                  s.progressFill,
-                  { width: `${timer.progress * 100}%` },
-                ]}
-              />
-            </View>
+            <TimerRing
+              progress={timer.progress}
+              timeLabel={formatTime(timer.remainingSeconds)}
+              paused={timer.state === "paused"}
+            />
 
             <View style={s.controls}>
               {timer.state === "running" && (
@@ -172,44 +161,7 @@ const s = StyleSheet.create({
 
   // ── 妈妈 ──
   mamaSection: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: 12,
-    paddingHorizontal: 24,
     paddingTop: 24,
-  },
-  avatarWrap: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: PALETTE.cardBg,
-    alignItems: "center",
-    justifyContent: "center",
-    borderWidth: 1,
-    borderColor: PALETTE.cardBorder,
-  },
-  avatar: { fontSize: 28 },
-  bubble: {
-    flex: 1,
-    backgroundColor: PALETTE.bubble,
-    borderRadius: 16,
-    borderTopLeftRadius: 4,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderWidth: 1,
-    borderColor: PALETTE.cardBorder,
-    shadowColor: PALETTE.bubbleShadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 1,
-    shadowRadius: 8,
-    elevation: 2,
-    minHeight: 52,
-  },
-  bubbleText: {
-    fontSize: 16,
-    lineHeight: 24,
-    color: PALETTE.text,
-    fontWeight: "500",
   },
 
   // ── 主内容 ──
@@ -239,26 +191,7 @@ const s = StyleSheet.create({
   // ── idle 统计 ──
   subtleStats: { fontSize: 14, color: PALETTE.textMuted },
 
-  // ── 计时器 ──
-  timerText: {
-    fontSize: 72,
-    fontWeight: "200",
-    color: PALETTE.text,
-    fontVariant: ["tabular-nums"],
-    letterSpacing: 2,
-  },
-  progressTrack: {
-    width: "80%",
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: PALETTE.cardBorder,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 3,
-    backgroundColor: PALETTE.accent,
-  },
+  // ── 控制按钮 ──
   controls: { flexDirection: "row", gap: 16, marginTop: 8 },
   controlBtn: {
     borderRadius: 14,
