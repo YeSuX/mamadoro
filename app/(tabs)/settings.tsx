@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  LayoutAnimation,
   Platform,
   Pressable,
   ScrollView,
@@ -30,6 +31,7 @@ import {
   Trophy,
   Sparkles,
   PartyPopper,
+  ChevronDown,
 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { createAudioPlayer, type AudioPlayer } from "expo-audio";
@@ -295,14 +297,32 @@ function SoundPicker({
   value: string;
   onChange: (v: string) => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   const [playingId, setPlayingId] = useState<string | null>(null);
   const playerRef = useRef<AudioPlayer | null>(null);
+
+  const selected = ALARM_SOUNDS.find((item) => item.value === value) ?? ALARM_SOUNDS[0];
 
   useEffect(() => {
     return () => {
       playerRef.current?.remove();
     };
   }, []);
+
+  const toggleExpanded = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpanded((prev) => !prev);
+  }, []);
+
+  const handleSelect = useCallback(
+    (soundValue: string) => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      Haptics.selectionAsync();
+      onChange(soundValue);
+      setExpanded(false);
+    },
+    [onChange],
+  );
 
   const handlePreview = useCallback(
     (soundValue: string) => {
@@ -346,60 +366,79 @@ function SoundPicker({
   );
 
   return (
-    <View style={s.soundList}>
-      {ALARM_SOUNDS.map((sound) => {
-        const selected = value === sound.value;
-        const isPlaying = playingId === sound.value;
-        const canPreview = sound.value !== "none";
+    <View>
+      {/* 触发行：标签 + 当前选中 */}
+      <Pressable
+        style={({ pressed }) => [s.soundTrigger, pressed && s.pressedItem]}
+        onPress={toggleExpanded}
+      >
+        <Text style={s.switchLabel}>提示音</Text>
+        <View style={s.soundTriggerControl}>
+          <selected.Icon size={16} color={PALETTE.accentDark} />
+          <Text style={s.soundTriggerLabel}>{selected.label}</Text>
+          <ChevronDown
+            size={16}
+            color={PALETTE.textMuted}
+            style={expanded ? { transform: [{ rotate: "180deg" }] } : undefined}
+          />
+        </View>
+      </Pressable>
 
-        return (
-          <Pressable
-            key={sound.value}
-            style={({ pressed }) => [
-              s.soundRow,
-              selected && s.soundRowSelected,
-              pressed && !selected && s.pressedItem,
-            ]}
-            onPress={() => {
-              Haptics.selectionAsync();
-              onChange(sound.value);
-            }}
-          >
-            {canPreview ? (
+      {/* 展开的选项列表 */}
+      {expanded && (
+        <View style={s.soundDropdown}>
+          {ALARM_SOUNDS.map((sound) => {
+            const isSelected = value === sound.value;
+            const isPlaying = playingId === sound.value;
+            const canPreview = sound.value !== "none";
+
+            return (
               <Pressable
+                key={sound.value}
                 style={({ pressed }) => [
-                  s.soundPlayBtn,
-                  isPlaying && s.soundPlayBtnActive,
-                  pressed && !isPlaying && s.pressedItem,
+                  s.soundRow,
+                  isSelected && s.soundRowSelected,
+                  pressed && !isSelected && s.pressedItem,
                 ]}
-                onPress={() => handlePreview(sound.value)}
-                hitSlop={8}
+                onPress={() => handleSelect(sound.value)}
               >
-                <Play
-                  size={10}
-                  color={isPlaying ? "#FFF" : PALETTE.accent}
-                  fill={isPlaying ? "#FFF" : PALETTE.accent}
+                {canPreview ? (
+                  <Pressable
+                    style={({ pressed }) => [
+                      s.soundPlayBtn,
+                      isPlaying && s.soundPlayBtnActive,
+                      pressed && !isPlaying && s.pressedItem,
+                    ]}
+                    onPress={() => handlePreview(sound.value)}
+                    hitSlop={8}
+                  >
+                    <Play
+                      size={10}
+                      color={isPlaying ? "#FFF" : PALETTE.accent}
+                      fill={isPlaying ? "#FFF" : PALETTE.accent}
+                    />
+                  </Pressable>
+                ) : (
+                  <View style={s.soundPlayPlaceholder} />
+                )}
+                <sound.Icon
+                  size={18}
+                  color={isSelected ? PALETTE.accentDark : PALETTE.textMuted}
                 />
+                <View style={s.soundTextWrap}>
+                  <Text style={[s.soundName, isSelected && s.soundNameSelected]}>
+                    {sound.label}
+                  </Text>
+                  <Text style={s.soundDesc}>{sound.desc}</Text>
+                </View>
+                {isSelected && (
+                  <Check size={16} color={PALETTE.accent} strokeWidth={2.5} />
+                )}
               </Pressable>
-            ) : (
-              <View style={s.soundPlayPlaceholder} />
-            )}
-            <sound.Icon
-              size={18}
-              color={selected ? PALETTE.accentDark : PALETTE.textMuted}
-            />
-            <View style={s.soundTextWrap}>
-              <Text style={[s.soundName, selected && s.soundNameSelected]}>
-                {sound.label}
-              </Text>
-              <Text style={s.soundDesc}>{sound.desc}</Text>
-            </View>
-            {selected && (
-              <Check size={16} color={PALETTE.accent} strokeWidth={2.5} />
-            )}
-          </Pressable>
-        );
-      })}
+            );
+          })}
+        </View>
+      )}
     </View>
   );
 }
@@ -609,7 +648,6 @@ export default function SettingsScreen() {
             icon={<Bell size={16} color={PALETTE.accent} />}
             title="提醒"
           />
-          <Text style={s.soundSectionLabel}>提示音</Text>
           <SoundPicker
             value={settings.alarmSound}
             onChange={handleUpdate("alarmSound")}
@@ -716,14 +754,35 @@ const s = StyleSheet.create({
   },
 
   // Sound picker
-  soundSectionLabel: {
-    fontSize: 13,
-    fontWeight: "500",
-    color: PALETTE.textMuted,
-    marginBottom: 8,
+  soundTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
-  soundList: {
-    gap: 2,
+  soundTriggerControl: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: PALETTE.warmWhite,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: PALETTE.cardBorder,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  soundTriggerLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: PALETTE.accentDark,
+  },
+  soundDropdown: {
+    marginTop: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: PALETTE.cardBorder,
+    backgroundColor: PALETTE.warmWhite,
+    overflow: "hidden",
+    paddingVertical: 4,
   },
   soundRow: {
     flexDirection: "row",
