@@ -4,13 +4,17 @@ import * as Haptics from "expo-haptics";
 
 import { MamaBubble } from "@/components/mama-bubble";
 import { PALETTE } from "@/components/onboarding/constants";
+import { TagPicker } from "@/components/tag-picker";
+import { TaskInput } from "@/components/task-input";
 import { TimerRing } from "@/components/timer-ring";
 import { useDailyStats } from "@/hooks/use-daily-stats";
 import { usePomodoro } from "@/hooks/use-pomodoro";
 import { useSettings } from "@/hooks/use-settings";
+import { useTags } from "@/hooks/use-tags";
+import { useTasks } from "@/hooks/use-tasks";
 import { useTimer } from "@/hooks/use-timer";
 
-type Phase = "idle" | "running" | "completed";
+type Phase = "idle" | "taskInput" | "tagSelect" | "running" | "completed";
 
 function formatTime(totalSeconds: number) {
   const m = Math.floor(totalSeconds / 60);
@@ -22,20 +26,48 @@ export default function HomeScreen() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [mamaBubble, setMamaBubble] = useState("今天想学点啥？");
   const [pomodoroId, setPomodoroId] = useState<string | null>(null);
+  const [taskId, setTaskId] = useState<string | null>(null);
+  const [taskTitle, setTaskTitle] = useState<string | null>(null);
 
   const { settings, loading: settingsLoading } = useSettings();
-  const { create, complete } = usePomodoro();
+  const { create: createPomodoro, complete: completePomodoro } = usePomodoro();
+  const { create: createTask, incrementPomodoro } = useTasks();
+  const { tags: availableTags, create: createTag, addToTask } = useTags();
   const { completedCount, refresh: refreshStats } = useDailyStats();
 
+  // ── 核心：开始计时 ──
+  const startTimer = useCallback(
+    async (forTaskId: string | null) => {
+      const id = await createPomodoro(forTaskId, settings.workDuration);
+      setPomodoroId(id);
+      timer.start();
+      setPhase("running");
+      setMamaBubble("手机放远点");
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- timer 引用稳定
+    [createPomodoro, settings.workDuration],
+  );
+
+  // ── 计时器完成回调 ──
   const handleComplete = useCallback(async () => {
     if (pomodoroId) {
-      await complete(pomodoroId, settings.workDuration);
+      await completePomodoro(pomodoroId, settings.workDuration);
+    }
+    if (taskId) {
+      await incrementPomodoro(taskId);
     }
     await refreshStats();
     setPhase("completed");
     setMamaBubble("这还差不多");
     setTimeout(() => setMamaBubble("妈给你切个苹果 🍎"), 2000);
-  }, [pomodoroId, settings.workDuration, complete, refreshStats]);
+  }, [
+    pomodoroId,
+    taskId,
+    settings.workDuration,
+    completePomodoro,
+    incrementPomodoro,
+    refreshStats,
+  ]);
 
   const timer = useTimer({
     duration: settings.workDuration,
@@ -43,15 +75,49 @@ export default function HomeScreen() {
     onComplete: handleComplete,
   });
 
-  const handleStart = useCallback(async () => {
+  // ── idle → taskInput ──
+  const handleBegin = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const id = await create(null, settings.workDuration);
-    setPomodoroId(id);
-    timer.start();
-    setPhase("running");
-    setMamaBubble("手机放远点");
-  }, [create, settings.workDuration, timer]);
+    setPhase("taskInput");
+    setMamaBubble("学什么？说！");
+  }, []);
 
+  // ── taskInput → tagSelect ──
+  const handleTaskConfirm = useCallback(
+    async (title: string) => {
+      const id = await createTask(title);
+      setTaskId(id);
+      setTaskTitle(title);
+      setPhase("tagSelect");
+      setMamaBubble("打个标签？不打也行");
+    },
+    [createTask],
+  );
+
+  // ── taskInput → running（跳过任务） ──
+  const handleTaskSkip = useCallback(() => {
+    startTimer(null);
+  }, [startTimer]);
+
+  // ── tagSelect → running（确认标签） ──
+  const handleTagsConfirm = useCallback(
+    async (selectedTagIds: string[]) => {
+      if (taskId && selectedTagIds.length > 0) {
+        await Promise.all(
+          selectedTagIds.map((tagId) => addToTask(taskId, tagId)),
+        );
+      }
+      startTimer(taskId);
+    },
+    [taskId, addToTask, startTimer],
+  );
+
+  // ── tagSelect → running（跳过标签） ──
+  const handleTagsSkip = useCallback(() => {
+    startTimer(taskId);
+  }, [taskId, startTimer]);
+
+  // ── 暂停 / 继续 ──
   const handlePause = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     timer.pause();
@@ -64,10 +130,13 @@ export default function HomeScreen() {
     setMamaBubble("继续继续");
   }, [timer]);
 
+  // ── 重置 ──
   const handleReset = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     timer.reset();
     setPomodoroId(null);
+    setTaskId(null);
+    setTaskTitle(null);
     setMamaBubble("今天想学点啥？");
     setPhase("idle");
   }, [timer]);
@@ -83,11 +152,12 @@ export default function HomeScreen() {
 
       {/* ── 主内容 ── */}
       <View style={s.content}>
+        {/* ── idle ── */}
         {phase === "idle" && (
           <View style={s.centered}>
             <Pressable
               style={({ pressed }) => [s.bigBtn, pressed && s.bigBtnPressed]}
-              onPress={handleStart}
+              onPress={handleBegin}
             >
               <Text style={s.bigBtnText}>妈我学了</Text>
             </Pressable>
@@ -99,8 +169,31 @@ export default function HomeScreen() {
           </View>
         )}
 
+        {/* ── 任务输入 ── */}
+        {phase === "taskInput" && (
+          <TaskInput onConfirm={handleTaskConfirm} onSkip={handleTaskSkip} />
+        )}
+
+        {/* ── 标签选择 ── */}
+        {phase === "tagSelect" && taskTitle && (
+          <TagPicker
+            availableTags={availableTags}
+            taskTitle={taskTitle}
+            onCreateTag={createTag}
+            onConfirm={handleTagsConfirm}
+            onSkip={handleTagsSkip}
+          />
+        )}
+
+        {/* ── 计时中 ── */}
         {phase === "running" && (
           <View style={s.centered}>
+            {taskTitle && (
+              <View style={s.runningTaskBadge}>
+                <Text style={s.runningTaskText}>📝 {taskTitle}</Text>
+              </View>
+            )}
+
             <TimerRing
               progress={timer.progress}
               timeLabel={formatTime(timer.remainingSeconds)}
@@ -134,10 +227,14 @@ export default function HomeScreen() {
           </View>
         )}
 
+        {/* ── 完成 ── */}
         {phase === "completed" && (
           <View style={s.centered}>
             <Text style={s.celebrationEmoji}>🍅</Text>
             <Text style={s.completedTitle}>完成！</Text>
+            {taskTitle && (
+              <Text style={s.completedTask}>「{taskTitle}」</Text>
+            )}
             <Text style={s.statsText}>今日 🍅×{completedCount}</Text>
 
             <Pressable
@@ -160,9 +257,7 @@ const s = StyleSheet.create({
   },
 
   // ── 妈妈 ──
-  mamaSection: {
-    paddingTop: 24,
-  },
+  mamaSection: { paddingTop: 24 },
 
   // ── 主内容 ──
   content: {
@@ -171,7 +266,7 @@ const s = StyleSheet.create({
     paddingHorizontal: 24,
     paddingBottom: 40,
   },
-  centered: { alignItems: "center", gap: 24 },
+  centered: { alignItems: "center", gap: 20 },
 
   // ── 大按钮 ──
   bigBtn: {
@@ -191,8 +286,21 @@ const s = StyleSheet.create({
   // ── idle 统计 ──
   subtleStats: { fontSize: 14, color: PALETTE.textMuted },
 
+  // ── running 任务标识 ──
+  runningTaskBadge: {
+    backgroundColor: PALETTE.selectedBg,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+  },
+  runningTaskText: {
+    fontSize: 14,
+    color: PALETTE.accentDark,
+    fontWeight: "600",
+  },
+
   // ── 控制按钮 ──
-  controls: { flexDirection: "row", gap: 16, marginTop: 8 },
+  controls: { flexDirection: "row", gap: 16, marginTop: 4 },
   controlBtn: {
     borderRadius: 14,
     borderWidth: 1.5,
@@ -207,5 +315,6 @@ const s = StyleSheet.create({
   // ── 完成 ──
   celebrationEmoji: { fontSize: 64 },
   completedTitle: { fontSize: 28, fontWeight: "700", color: PALETTE.text },
+  completedTask: { fontSize: 16, color: PALETTE.textMuted, fontWeight: "500" },
   statsText: { fontSize: 18, color: PALETTE.textMuted, fontWeight: "500" },
 });
