@@ -1,9 +1,14 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
+import { ChevronLeft } from "lucide-react-native";
 import { useCallback, useRef, useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, {
+  Extrapolation,
+  interpolate,
+  interpolateColor,
   runOnJS,
+  type SharedValue,
   useAnimatedStyle,
   useSharedValue,
   withTiming,
@@ -19,11 +24,39 @@ import {
 import { StepComplete } from "@/components/onboarding/step-complete";
 import { StepDuration } from "@/components/onboarding/step-duration";
 import { StepMomMode } from "@/components/onboarding/step-mom-mode";
-import { TypewriterText } from "@/components/onboarding/typewriter-text";
 import { StepWelcome } from "@/components/onboarding/step-welcome";
+import { TypewriterText } from "@/components/onboarding/typewriter-text";
 import { createDefaultSettings } from "@/services/settings";
 
 const STEPS: Step[] = [0, 1, 2, 3];
+
+// ── 进度条片段（Stories 风格，带颜色过渡动画）────────────────────────────────────
+
+function ProgressSegment({
+  index,
+  progress,
+}: {
+  index: number;
+  progress: SharedValue<number>;
+}) {
+  const barStyle = useAnimatedStyle(() => {
+    const fill = interpolate(
+      progress.value,
+      [index - 1, index],
+      [0, 1],
+      Extrapolation.CLAMP,
+    );
+    return {
+      backgroundColor: interpolateColor(
+        fill,
+        [0, 1],
+        [PALETTE.cardBorder, PALETTE.accent],
+      ),
+    };
+  });
+
+  return <Animated.View style={[styles.progressBar, barStyle]} />;
+}
 
 export default function OnboardingScreen() {
   const router = useRouter();
@@ -36,6 +69,7 @@ export default function OnboardingScreen() {
 
   const contentOpacity = useSharedValue(1);
   const bubbleOpacity = useSharedValue(1);
+  const displayStep = useSharedValue(0);
   const pendingStepRef = useRef<Step | null>(null);
   const pendingBubbleRef = useRef<string | null>(null);
   const isTransitioning = useRef(false);
@@ -58,6 +92,8 @@ export default function OnboardingScreen() {
       if (isTransitioning.current) return;
       isTransitioning.current = true;
       pendingStepRef.current = nextStep;
+      // 进度条先行过渡，给用户即时反馈
+      displayStep.value = withTiming(nextStep, { duration: 350 });
       contentOpacity.value = withTiming(0, { duration: 200 }, (finished) => {
         if (finished) runOnJS(applyStep)();
       });
@@ -114,7 +150,25 @@ export default function OnboardingScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={styles.bgLayer} />
+      {/* ── 顶部导航 + 进度条 ── */}
+      <View style={styles.progressHeader}>
+        <Pressable
+          style={styles.backBtn}
+          onPress={goBack}
+          hitSlop={12}
+          disabled={step === 0}
+        >
+          {step > 0 && (
+            <ChevronLeft size={20} color={PALETTE.textMuted} strokeWidth={2} />
+          )}
+        </Pressable>
+        <View style={styles.progressBars}>
+          {STEPS.map((s) => (
+            <ProgressSegment key={s} index={s} progress={displayStep} />
+          ))}
+        </View>
+        <View style={styles.backBtn} />
+      </View>
 
       {/* ── 妈妈固定区域 ── */}
       <View style={styles.mamaZone}>
@@ -128,27 +182,6 @@ export default function OnboardingScreen() {
             {step === 3 && <Text style={styles.thumbEmoji}>👍</Text>}
           </View>
         </View>
-      </View>
-
-      {/* ── 进度指示器 ── */}
-      <View style={styles.indicator}>
-        <Pressable
-          style={styles.backBtn}
-          onPress={goBack}
-          hitSlop={12}
-          disabled={step === 0}
-        >
-          {step > 0 && <Text style={styles.backText}>‹</Text>}
-        </Pressable>
-        <View style={styles.dots}>
-          {STEPS.map((s) => (
-            <View
-              key={s}
-              style={[styles.dot, s <= step && styles.dotActive]}
-            />
-          ))}
-        </View>
-        <View style={styles.backBtn} />
       </View>
 
       {/* ── 内容区（随步骤切换）── */}
@@ -200,13 +233,37 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: PALETTE.cream,
   },
-  bgLayer: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: PALETTE.cream,
+
+  // ── 顶部导航 + 进度条 ──
+  progressHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 4,
+    gap: 12,
   },
+  backBtn: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  progressBars: {
+    flex: 1,
+    flexDirection: "row",
+    gap: 6,
+  },
+  progressBar: {
+    flex: 1,
+    height: 4,
+    borderRadius: 2,
+  },
+
+  // ── 妈妈区域 ──
   mamaZone: {
     paddingHorizontal: 24,
-    paddingTop: 20,
+    paddingTop: 16,
     paddingBottom: 8,
   },
   mamaRow: {
@@ -217,7 +274,7 @@ const styles = StyleSheet.create({
   speechBubble: {
     flex: 1,
     backgroundColor: PALETTE.bubble,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: PALETTE.cardBorder,
     paddingHorizontal: 18,
@@ -253,56 +310,23 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   mamaAvatarWrap: {
-    width: 64,
-    height: 64,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: PALETTE.selectedBg,
     alignItems: "center",
     justifyContent: "center",
     position: "relative",
   },
   mamaEmoji: {
-    fontSize: 48,
-    lineHeight: 56,
+    fontSize: 32,
+    lineHeight: 38,
   },
   thumbEmoji: {
     position: "absolute",
-    bottom: -4,
-    right: -4,
-    fontSize: 20,
-  },
-
-  // ── 进度指示器 ──
-  indicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 24,
-    paddingVertical: 10,
-  },
-  backBtn: {
-    width: 32,
-    height: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  backText: {
-    fontSize: 28,
-    fontWeight: "300",
-    color: PALETTE.textMuted,
-    lineHeight: 32,
-  },
-  dots: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  dot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: PALETTE.cardBorder,
-  },
-  dotActive: {
-    backgroundColor: PALETTE.accent,
+    bottom: -2,
+    right: -2,
+    fontSize: 16,
   },
 
   contentZone: {
