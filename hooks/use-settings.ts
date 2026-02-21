@@ -3,7 +3,7 @@ import { getDb } from "@/db";
 import { settings } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
-const SETTINGS_ID = "default";
+const SETTINGS_ID = "1";
 
 export const DEFAULT_SETTINGS = {
   id: SETTINGS_ID,
