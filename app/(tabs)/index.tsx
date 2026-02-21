@@ -1,7 +1,11 @@
 import { useCallback, useState } from "react";
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
-import Animated, { BounceIn, FadeInUp } from "react-native-reanimated";
+import Animated, {
+  BounceIn,
+  FadeIn,
+  FadeInUp,
+} from "react-native-reanimated";
 
 import { MamaBubble } from "@/components/mama-bubble";
 import { PALETTE } from "@/components/onboarding/constants";
@@ -24,9 +28,21 @@ function formatTime(totalSeconds: number) {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+function getIdleGreeting(completedCount: number): string {
+  const hour = new Date().getHours();
+  if (completedCount >= 4) return "今天学不少了，厉害啊";
+  if (completedCount > 0) return "休息够了没？再来一个";
+  if (hour < 9) return "这么早？行啊你，快学";
+  if (hour < 12) return "上午头脑清醒，学起来";
+  if (hour < 14) return "吃完饭了？来学会儿";
+  if (hour < 18) return "下午了，别光玩手机";
+  if (hour < 21) return "晚上了，该学习了吧";
+  return "这么晚了还学？注意身体啊";
+}
+
 export default function HomeScreen() {
   const [phase, setPhase] = useState<Phase>("idle");
-  const [mamaBubble, setMamaBubble] = useState("今天想学点啥？");
+  const [mamaBubble, setMamaBubble] = useState(() => getIdleGreeting(0));
   const [pomodoroId, setPomodoroId] = useState<string | null>(null);
   const [taskId, setTaskId] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
@@ -152,9 +168,9 @@ export default function HomeScreen() {
     setPomodoroId(null);
     setTaskId(null);
     setTaskTitle(null);
-    setMamaBubble("今天想学点啥？");
+    setMamaBubble(getIdleGreeting(completedCount));
     setPhase("idle");
-  }, [timer]);
+  }, [timer, completedCount]);
 
   if (settingsLoading) return null;
 
@@ -170,16 +186,45 @@ export default function HomeScreen() {
         {/* ── idle ── */}
         {phase === "idle" && (
           <View style={s.centered}>
-            <Pressable
-              style={({ pressed }) => [s.bigBtn, pressed && s.bigBtnPressed]}
-              onPress={handleBegin}
-            >
-              <Text style={s.bigBtnText}>妈我学了</Text>
-            </Pressable>
-            {completedCount > 0 && (
-              <Text style={s.subtleStats}>
-                今日已完成 🍅×{completedCount}
-              </Text>
+            <Animated.View entering={FadeIn.duration(600)}>
+              <TimerRing
+                progress={0}
+                timeLabel={formatTime(settings.workDuration)}
+              />
+            </Animated.View>
+
+            <Animated.View entering={FadeInUp.delay(200).duration(400)}>
+              <Pressable
+                style={({ pressed }) => [s.bigBtn, pressed && s.bigBtnPressed]}
+                onPress={handleBegin}
+              >
+                <Text style={s.bigBtnText}>开始学习</Text>
+              </Pressable>
+            </Animated.View>
+
+            {completedCount > 0 ? (
+              <Animated.View
+                entering={FadeInUp.delay(350).duration(400)}
+                style={s.statsRow}
+              >
+                {Array.from({ length: Math.min(completedCount, 8) }).map(
+                  (_, i) => (
+                    <Text key={i} style={s.statsTomato}>
+                      🍅
+                    </Text>
+                  ),
+                )}
+                {completedCount > 8 && (
+                  <Text style={s.statsOverflow}>+{completedCount - 8}</Text>
+                )}
+              </Animated.View>
+            ) : (
+              <Animated.Text
+                entering={FadeInUp.delay(350).duration(400)}
+                style={s.idleHint}
+              >
+                第一个 🍅 等你来拿
+              </Animated.Text>
             )}
           </View>
         )}
@@ -323,8 +368,16 @@ const s = StyleSheet.create({
   bigBtnPressed: { opacity: 0.85, transform: [{ scale: 0.97 }] },
   bigBtnText: { color: "#FFF", fontSize: 20, fontWeight: "700" },
 
-  // ── idle 统计 ──
-  subtleStats: { fontSize: 14, color: PALETTE.textMuted },
+  // ── idle ──
+  idleHint: { fontSize: 14, color: PALETTE.textMuted, fontWeight: "500" },
+  statsRow: { flexDirection: "row", alignItems: "center", gap: 2 },
+  statsTomato: { fontSize: 20 },
+  statsOverflow: {
+    fontSize: 14,
+    color: PALETTE.textMuted,
+    fontWeight: "600",
+    marginLeft: 4,
+  },
 
   // ── running 任务标识 ──
   runningTaskBadge: {
