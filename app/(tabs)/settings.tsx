@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -16,18 +16,23 @@ import {
   Heart,
   Zap,
   Bell,
-  BellRing,
   Wind,
   BellOff,
-  Volume2,
   Minus,
   Plus,
   Play,
   Check,
-  Music,
+  Wrench,
+  Smile,
+  ShieldCheck,
+  Flame,
+  Eye,
+  Trophy,
+  Sparkles,
+  PartyPopper,
 } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
-import { Audio } from "expo-av";
+import { createAudioPlayer, type AudioPlayer } from "expo-audio";
 import { SOUND_ASSETS } from "@/assets/sounds";
 import { PALETTE, MOM_MODES } from "@/components/onboarding/constants";
 import { useSettings, type AppSettings } from "@/hooks/use-settings";
@@ -35,18 +40,33 @@ import { useSettings, type AppSettings } from "@/hooks/use-settings";
 // ─── 选项定义 ──────────────────────────────────────────────────────────────────
 
 const FOCUS_PRESETS = [
-  { label: "经典番茄", work: 1500, shortBreak: 300, longBreak: 1800, rounds: 4 },
-  { label: "短冲刺", work: 900, shortBreak: 180, longBreak: 900, rounds: 4 },
-  { label: "深度工作", work: 2700, shortBreak: 600, longBreak: 1800, rounds: 3 },
+  { label: "经典番茄", hint: "25 · 5 · 30", work: 1500, shortBreak: 300, longBreak: 1800, rounds: 4 },
+  { label: "短冲刺", hint: "15 · 3 · 15", work: 900, shortBreak: 180, longBreak: 900, rounds: 4 },
+  { label: "深度工作", hint: "45 · 10 · 30", work: 2700, shortBreak: 600, longBreak: 1800, rounds: 3 },
 ];
 
 const ALARM_SOUNDS = [
-  { value: "default", label: "默认铃声", desc: "系统通知提示音", Icon: Volume2 },
-  { value: "bell", label: "清脆铃声", desc: "经典闹铃声", Icon: BellRing },
-  { value: "chime", label: "风铃", desc: "轻柔风铃声", Icon: Wind },
-  { value: "marimba", label: "马林巴琴", desc: "温暖木琴音色", Icon: Music },
+  { value: "bell", label: "清脆铃铛", desc: "经典铃铛提示音", Icon: Bell },
+  { value: "correct", label: "答对了！", desc: "妈妈认可的声音", Icon: Trophy },
+  { value: "fart", label: "调皮一下", desc: "搞笑解压神器", Icon: Wind },
+  { value: "magic", label: "魔法转场", desc: "优雅的过渡音效", Icon: Sparkles },
+  { value: "cheer", label: "欢呼鼓掌", desc: "全场为你喝彩", Icon: PartyPopper },
   { value: "none", label: "静音", desc: "仅震动提醒", Icon: BellOff },
 ];
+
+const SETTINGS_QUOTES = [
+  "调完赶紧去专注！",
+  "别在设置里磨时间哦",
+  "磨刀不误砍柴工",
+  "设置好了就去学习！",
+  "妈帮你看着，别偷懒",
+];
+
+const MOM_MODE_ICONS: Record<string, React.ComponentType<{ size: number; color: string }>> = {
+  gentle: Smile,
+  standard: ShieldCheck,
+  strict: Flame,
+};
 
 // ─── 子组件 ──────────────────────────────────────────────────────────────────
 
@@ -91,9 +111,9 @@ function SwitchRow({
       <Switch
         value={value}
         onValueChange={onChange}
-        trackColor={{ false: "#E8E2D9", true: PALETTE.accent }}
+        trackColor={{ false: PALETTE.cardBorder, true: PALETTE.accent }}
         thumbColor="#fff"
-        ios_backgroundColor="#E8E2D9"
+        ios_backgroundColor={PALETTE.cardBorder}
       />
     </View>
   );
@@ -145,6 +165,20 @@ function CycleSummary({
             ]}
           />
         ))}
+      </View>
+      <View style={s.cycleLegend}>
+        <View style={s.legendItem}>
+          <View style={[s.legendDot, s.cycleSegWork]} />
+          <Text style={s.legendText}>工作</Text>
+        </View>
+        <View style={s.legendItem}>
+          <View style={[s.legendDot, s.cycleSegBreak]} />
+          <Text style={s.legendText}>短休息</Text>
+        </View>
+        <View style={s.legendItem}>
+          <View style={[s.legendDot, s.cycleSegLong]} />
+          <Text style={s.legendText}>长休息</Text>
+        </View>
       </View>
       <Text style={s.cycleText}>一轮周期 ≈ {totalText}</Text>
     </View>
@@ -262,25 +296,23 @@ function SoundPicker({
   onChange: (v: string) => void;
 }) {
   const [playingId, setPlayingId] = useState<string | null>(null);
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const playerRef = useRef<AudioPlayer | null>(null);
 
   useEffect(() => {
     return () => {
-      soundRef.current?.unloadAsync();
+      playerRef.current?.remove();
     };
   }, []);
 
   const handlePreview = useCallback(
-    async (soundValue: string) => {
+    (soundValue: string) => {
       if (soundValue === "none") return;
 
-      // 停止上一个正在播放的音频
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
+      if (playerRef.current) {
+        playerRef.current.remove();
+        playerRef.current = null;
       }
 
-      // 如果点击的是当前正在播放的，仅停止
       if (playingId === soundValue) {
         setPlayingId(null);
         return;
@@ -288,27 +320,24 @@ function SoundPicker({
 
       const source = SOUND_ASSETS[soundValue];
       if (!source) {
-        // 音频文件尚未放置，用 haptic 反馈占位
         setPlayingId(soundValue);
-        await Haptics.notificationAsync(
-          Haptics.NotificationFeedbackType.Success,
-        );
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         setTimeout(() => setPlayingId(null), 600);
         return;
       }
 
       try {
         setPlayingId(soundValue);
-        const { sound } = await Audio.Sound.createAsync(source);
-        soundRef.current = sound;
-        sound.setOnPlaybackStatusUpdate((status) => {
-          if (status.isLoaded && status.didJustFinish) {
+        const player = createAudioPlayer(source);
+        playerRef.current = player;
+        player.addListener("playbackStatusUpdate", (status) => {
+          if (status.didJustFinish) {
             setPlayingId(null);
-            sound.unloadAsync();
-            soundRef.current = null;
+            player.remove();
+            if (playerRef.current === player) playerRef.current = null;
           }
         });
-        await sound.playAsync();
+        player.play();
       } catch {
         setPlayingId(null);
       }
@@ -387,6 +416,11 @@ export default function SettingsScreen() {
     [update],
   );
 
+  const quote = useMemo(
+    () => SETTINGS_QUOTES[Math.floor(Math.random() * SETTINGS_QUOTES.length)],
+    [],
+  );
+
   if (loading) {
     return (
       <SafeAreaView style={[s.container, s.center]}>
@@ -402,7 +436,13 @@ export default function SettingsScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        <Text style={s.pageTitle}>设置</Text>
+        <View style={s.headerArea}>
+          <View style={s.headerRow}>
+            <Text style={s.pageTitle}>设置</Text>
+            <Wrench size={22} color={PALETTE.accent} />
+          </View>
+          <Text style={s.headerQuote}>{quote}</Text>
+        </View>
 
         {/* 专注时长 */}
         <View style={s.section}>
@@ -490,6 +530,9 @@ export default function SettingsScreen() {
                   >
                     {preset.label}
                   </Text>
+                  <Text style={[s.presetHint, isActive && s.presetHintActive]}>
+                    {preset.hint}
+                  </Text>
                 </Pressable>
               );
             })}
@@ -515,7 +558,17 @@ export default function SettingsScreen() {
                     update("momMode", mode.value);
                   }}
                 >
-                  <Text style={s.momIcon}>{mode.icon}</Text>
+                  <View style={s.momIconWrap}>
+                    {(() => {
+                      const MomIcon = MOM_MODE_ICONS[mode.value] ?? Heart;
+                      return (
+                        <MomIcon
+                          size={20}
+                          color={selected ? PALETTE.accentDark : PALETTE.textMuted}
+                        />
+                      );
+                    })()}
+                  </View>
                   <View style={s.momBody}>
                     <Text
                       style={[s.momLabel, selected && s.momLabelSelected]}
@@ -523,8 +576,9 @@ export default function SettingsScreen() {
                       {mode.label}
                     </Text>
                     <Text style={s.momTagline}>{mode.tagline}</Text>
+                    <Text style={s.momDesc}>{mode.desc1}</Text>
                   </View>
-                  {selected && <Text style={s.checkMark}>✓</Text>}
+                  {selected && <Check size={18} color={PALETTE.accent} strokeWidth={2.5} />}
                 </Pressable>
               );
             })}
@@ -576,7 +630,11 @@ export default function SettingsScreen() {
           />
         </View>
 
-        <View style={s.bottomSpacer} />
+        <View style={s.footer}>
+          <Eye size={28} color={PALETTE.textMuted} />
+          <Text style={s.footerText}>妈妈一直看着你哦</Text>
+          <Text style={s.versionText}>mamadoro v1.0</Text>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -602,8 +660,24 @@ const s = StyleSheet.create({
     fontSize: 28,
     fontWeight: "700",
     color: PALETTE.text,
+  },
+  headerArea: {
     marginBottom: 20,
     marginTop: 8,
+  },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  headerIcon: {
+    marginLeft: 2,
+  },
+  headerQuote: {
+    fontSize: 13,
+    color: PALETTE.textMuted,
+    marginTop: 4,
+    fontStyle: "italic",
   },
 
   // Section
@@ -733,9 +807,13 @@ const s = StyleSheet.create({
     backgroundColor: PALETTE.selectedBg,
     borderColor: PALETTE.selectedBorder,
   },
-  momIcon: {
-    fontSize: 24,
-    lineHeight: 32,
+  momIconWrap: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    backgroundColor: "rgba(232, 133, 58, 0.08)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   momBody: {
     flex: 1,
@@ -753,10 +831,10 @@ const s = StyleSheet.create({
     fontSize: 12,
     color: PALETTE.textMuted,
   },
-  checkMark: {
-    fontSize: 16,
-    color: PALETTE.accent,
-    fontWeight: "700",
+  momDesc: {
+    fontSize: 11,
+    color: PALETTE.textLight,
+    marginTop: 2,
   },
   // Cycle summary
   cycleSummary: {
@@ -764,22 +842,42 @@ const s = StyleSheet.create({
   },
   cycleBar: {
     flexDirection: "row",
-    height: 6,
-    borderRadius: 3,
+    height: 10,
+    borderRadius: 5,
     overflow: "hidden",
     gap: 2,
   },
   cycleSeg: {
-    borderRadius: 3,
+    borderRadius: 5,
   },
   cycleSegWork: {
     backgroundColor: PALETTE.accent,
   },
   cycleSegBreak: {
-    backgroundColor: "#E5D8C8",
+    backgroundColor: "#8DC5A3",
   },
   cycleSegLong: {
-    backgroundColor: PALETTE.textLight,
+    backgroundColor: "#89B5D4",
+  },
+  cycleLegend: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 16,
+    marginTop: 2,
+  },
+  legendItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  legendDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  legendText: {
+    fontSize: 11,
+    color: PALETTE.textMuted,
   },
   cycleText: {
     fontSize: 12,
@@ -822,7 +920,10 @@ const s = StyleSheet.create({
     justifyContent: "center",
     gap: 2,
     minWidth: 56,
-    paddingHorizontal: 2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: "rgba(232, 133, 58, 0.06)",
+    borderRadius: 6,
   },
   stepperValue: {
     fontSize: 15,
@@ -871,10 +972,33 @@ const s = StyleSheet.create({
     color: PALETTE.accentDark,
     fontWeight: "600",
   },
+  presetHint: {
+    fontSize: 10,
+    color: PALETTE.textLight,
+    marginTop: 2,
+  },
+  presetHintActive: {
+    color: PALETTE.accent,
+  },
   pressedItem: {
     opacity: 0.7,
   },
-  bottomSpacer: {
-    height: 32,
+  footer: {
+    alignItems: "center",
+    paddingVertical: 24,
+    gap: 4,
+  },
+  footerIcon: {
+    marginBottom: 4,
+  },
+  footerText: {
+    fontSize: 13,
+    color: PALETTE.textMuted,
+    fontStyle: "italic",
+  },
+  versionText: {
+    fontSize: 11,
+    color: PALETTE.textLight,
+    marginTop: 4,
   },
 });

@@ -11,7 +11,7 @@ export const DEFAULT_SETTINGS = {
   shortBreakDuration: 300,
   longBreakDuration: 1800,
   roundsBeforeLongBreak: 4,
-  alarmSound: "default" as string,
+  alarmSound: "bell" as string,
   vibrationEnabled: true,
   dndEnabled: false,
   autoStartBreak: true,

@@ -1,44 +1,38 @@
 import { useCallback, useEffect, useRef } from "react";
-import { Audio } from "expo-av";
+import {
+  createAudioPlayer,
+  setAudioModeAsync,
+  type AudioPlayer,
+} from "expo-audio";
 
 import { SOUND_ASSETS } from "@/assets/sounds";
 
 export function useSound() {
-  const soundRef = useRef<Audio.Sound | null>(null);
+  const playerRef = useRef<AudioPlayer | null>(null);
 
   useEffect(() => {
-    Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+    setAudioModeAsync({ playsInSilentMode: true });
+    return () => {
+      playerRef.current?.remove();
+    };
   }, []);
 
   const play = useCallback(async (name: string) => {
     try {
-      if (soundRef.current) {
-        await soundRef.current.unloadAsync();
-        soundRef.current = null;
+      if (playerRef.current) {
+        playerRef.current.remove();
+        playerRef.current = null;
       }
 
       const source = SOUND_ASSETS[name];
       if (!source) return;
 
-      const { sound } = await Audio.Sound.createAsync(source);
-      soundRef.current = sound;
-      await sound.playAsync();
-
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          sound.unloadAsync();
-          if (soundRef.current === sound) soundRef.current = null;
-        }
-      });
+      const player = createAudioPlayer(source);
+      playerRef.current = player;
+      player.play();
     } catch {
       // 静默处理音频播放错误，避免阻断主流程
     }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      soundRef.current?.unloadAsync();
-    };
   }, []);
 
   return { play };
