@@ -1,12 +1,16 @@
-import { useCallback, useState } from "react";
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from "react-native";
 import * as Haptics from "expo-haptics";
-import Animated, {
-  BounceIn,
-  FadeIn,
-  FadeInUp,
-} from "react-native-reanimated";
 import { useFocusEffect } from "expo-router";
+import { Pause, Play, Square } from "lucide-react-native";
+import { useCallback, useState } from "react";
+import {
+  Alert,
+  Pressable,
+  SafeAreaView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import Animated, { BounceIn, FadeIn, FadeInUp } from "react-native-reanimated";
 
 import { MamaBubble } from "@/components/mama-bubble";
 import { PALETTE } from "@/components/onboarding/constants";
@@ -29,6 +33,25 @@ function formatTime(totalSeconds: number) {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+// 根据妈妈模式获取提前结束的反馈语
+function getAbortMessage(mode: string, completedCount: number): string {
+  const messages: Record<string, string[]> = {
+    gentle: [
+      "没关系，下次加油 💪",
+      "累了就休息，妈不怪你",
+      "已经很不错了，别给自己太大压力",
+    ],
+    standard: [
+      "这就放弃了？妈有点失望",
+      "半途而废可不行啊",
+      "下次要坚持到底，懂吗？",
+    ],
+    strict: ["就这？再来！", "放弃是弱者的选择", "妈对你太失望了 😤"],
+  };
+  const modeMessages = messages[mode] || messages.standard;
+  return modeMessages[completedCount % modeMessages.length];
+}
+
 function getIdleGreeting(completedCount: number): string {
   const hour = new Date().getHours();
   if (completedCount >= 4) return "今天学不少了，厉害啊";
@@ -48,9 +71,13 @@ export default function HomeScreen() {
   const [taskId, setTaskId] = useState<string | null>(null);
   const [taskTitle, setTaskTitle] = useState<string | null>(null);
 
-  const { settings, loading: settingsLoading, reload: reloadSettings } = useSettings();
+  const {
+    settings,
+    loading: settingsLoading,
+    reload: reloadSettings,
+  } = useSettings();
   const { create: createPomodoro, complete: completePomodoro } = usePomodoro();
-  
+
   // 当 tab 获得焦点时重新加载设置（仅在非运行状态）
   useFocusEffect(
     useCallback(() => {
@@ -74,7 +101,7 @@ export default function HomeScreen() {
       setMamaBubble("手机放远点");
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps -- timer 引用稳定
-    [createPomodoro, settings.workDuration],
+    [createPomodoro, settings.workDuration]
   );
 
   // ── 计时器完成回调 ──
@@ -132,7 +159,7 @@ export default function HomeScreen() {
       setPhase("tagSelect");
       setMamaBubble("打个标签？不打也行");
     },
-    [createTask],
+    [createTask]
   );
 
   // ── taskInput → running（跳过任务） ──
@@ -145,12 +172,12 @@ export default function HomeScreen() {
     async (selectedTagIds: string[]) => {
       if (taskId && selectedTagIds.length > 0) {
         await Promise.all(
-          selectedTagIds.map((tagId) => addToTask(taskId, tagId)),
+          selectedTagIds.map((tagId) => addToTask(taskId, tagId))
         );
       }
       startTimer(taskId);
     },
-    [taskId, addToTask, startTimer],
+    [taskId, addToTask, startTimer]
   );
 
   // ── tagSelect → running（跳过标签） ──
@@ -181,6 +208,37 @@ export default function HomeScreen() {
     setMamaBubble(getIdleGreeting(completedCount));
     setPhase("idle");
   }, [timer, completedCount]);
+
+  // ── 提前结束番茄钟 ──
+  const handleAbort = useCallback(() => {
+    Alert.alert(
+      "确定要结束吗？",
+      "这个番茄钟还没完成，结束不会计入统计",
+      [
+        {
+          text: "继续专注",
+          style: "cancel",
+          onPress: () => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          },
+        },
+        {
+          text: "结束",
+          style: "destructive",
+          onPress: () => {
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            timer.reset();
+            setPomodoroId(null);
+            setTaskId(null);
+            setTaskTitle(null);
+            setMamaBubble(getAbortMessage(settings.momMode, completedCount));
+            setPhase("idle");
+          },
+        },
+      ],
+      { cancelable: true }
+    );
+  }, [timer, settings.momMode, completedCount]);
 
   if (settingsLoading) return null;
 
@@ -222,7 +280,7 @@ export default function HomeScreen() {
                     <Text key={i} style={s.statsTomato}>
                       🍅
                     </Text>
-                  ),
+                  )
                 )}
                 {completedCount > 8 && (
                   <Text style={s.statsOverflow}>+{completedCount - 8}</Text>
@@ -270,8 +328,10 @@ export default function HomeScreen() {
               paused={timer.state === "paused"}
             />
 
-            <View style={s.controls}>
-              {timer.state === "running" && (
+            {/* 控制按钮区域 */}
+            <View style={s.controlsContainer}>
+              {timer.state === "running" ? (
+                // 运行中：只显示暂停按钮
                 <Pressable
                   style={({ pressed }) => [
                     s.controlBtn,
@@ -279,19 +339,40 @@ export default function HomeScreen() {
                   ]}
                   onPress={handlePause}
                 >
+                  <Pause size={22} color={PALETTE.text} />
                   <Text style={s.controlBtnText}>暂停</Text>
                 </Pressable>
-              )}
-              {timer.state === "paused" && (
-                <Pressable
-                  style={({ pressed }) => [
-                    s.controlBtn,
-                    pressed && s.controlBtnPressed,
-                  ]}
-                  onPress={handleResume}
-                >
-                  <Text style={s.controlBtnText}>继续</Text>
-                </Pressable>
+              ) : (
+                // 暂停后：展开显示继续和结束
+                <>
+                  <Pressable
+                    style={({ pressed }) => [
+                      s.controlBtn,
+                      s.controlBtnPrimary,
+                      pressed && s.controlBtnPressed,
+                    ]}
+                    onPress={handleResume}
+                  >
+                    <Play size={22} color="#FFF" fill="#FFF" />
+                    <Text style={[s.controlBtnText, s.controlBtnTextPrimary]}>
+                      继续
+                    </Text>
+                  </Pressable>
+
+                  <Pressable
+                    style={({ pressed }) => [
+                      s.controlBtn,
+                      s.controlBtnDanger,
+                      pressed && s.controlBtnPressed,
+                    ]}
+                    onPress={handleAbort}
+                  >
+                    <Square size={20} color={PALETTE.accent} />
+                    <Text style={[s.controlBtnText, s.controlBtnTextDanger]}>
+                      结束
+                    </Text>
+                  </Pressable>
+                </>
               )}
             </View>
           </View>
@@ -402,18 +483,52 @@ const s = StyleSheet.create({
     fontWeight: "600",
   },
 
-  // ── 控制按钮 ──
-  controls: { flexDirection: "row", gap: 16, marginTop: 4 },
-  controlBtn: {
-    borderRadius: 14,
-    borderWidth: 1.5,
-    borderColor: PALETTE.cardBorder,
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    backgroundColor: PALETTE.cardBg,
+  // ── 控制按钮区域 ──
+  controlsContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 12,
+    marginTop: 8,
+    paddingHorizontal: 24,
+    width: "100%",
   },
-  controlBtnPressed: { opacity: 0.8 },
-  controlBtnText: { fontSize: 16, fontWeight: "600", color: PALETTE.text },
+
+  // ── 控制按钮 ──
+  controlBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    height: 48,
+    paddingHorizontal: 24,
+    borderRadius: 24,
+    backgroundColor: PALETTE.cardBg,
+    borderWidth: 1,
+    borderColor: PALETTE.cardBorder,
+  },
+  controlBtnPrimary: {
+    backgroundColor: PALETTE.accent,
+    borderColor: PALETTE.accent,
+  },
+  controlBtnDanger: {
+    backgroundColor: PALETTE.cardBg,
+    borderColor: PALETTE.cardBorder,
+  },
+  controlBtnPressed: {
+    opacity: 0.8,
+  },
+  controlBtnText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: PALETTE.text,
+  },
+  controlBtnTextPrimary: {
+    color: "#FFF",
+  },
+  controlBtnTextDanger: {
+    color: PALETTE.accent,
+  },
 
   // ── 完成 ──
   celebrationEmoji: { fontSize: 64 },
